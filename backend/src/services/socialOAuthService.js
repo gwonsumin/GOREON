@@ -19,7 +19,7 @@ const PROVIDER_CONFIG = {
     authorizeUrl: "https://kauth.kakao.com/oauth/authorize",
     tokenUrl: "https://kauth.kakao.com/oauth/token",
     userInfoUrl: "https://kapi.kakao.com/v2/user/me",
-    scope: "account_email profile_nickname profile_image",
+    scope: process.env.KAKAO_SCOPE || "",
     optionalSecret: true,
   },
   naver: {
@@ -155,12 +155,17 @@ const mapProviderUser = (provider, profile) => {
   }
 
   if (provider === "kakao") {
+    const profileImage =
+      profile.kakao_account?.profile?.profile_image_url ||
+      profile.properties?.profile_image ||
+      profile.properties?.thumbnail_image;
+
     return {
       provider,
       providerId: profile.id,
       email: profile.kakao_account?.email,
-      name: profile.kakao_account?.profile?.nickname,
-      profileImage: profile.kakao_account?.profile?.profile_image_url,
+      name: profile.kakao_account?.profile?.nickname || profile.properties?.nickname,
+      profileImage,
     };
   }
 
