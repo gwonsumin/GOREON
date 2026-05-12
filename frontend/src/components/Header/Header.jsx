@@ -246,15 +246,15 @@ function Header() {
   };
 
   const handleLogout = async () => {
-    await api.post("/auth/logout").catch((error) => {
+    dispatch(logout());
+    navigate("/");
+
+    api.post("/auth/logout").catch((error) => {
       console.warn("[auth][logout] request failed", {
         message: error.message,
         status: error.response?.status,
       });
     });
-
-    dispatch(logout());
-    navigate("/");
   };
 
   const handleHomeClick = () => {
