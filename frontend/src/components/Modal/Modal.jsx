@@ -1,8 +1,10 @@
 /* [컴포넌트] 모달창 (Modal)                   */
 /* 모바일에서 모달창을 그리는 컴포넌트 입니다. */
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import "./Modal.scss";
 import CloseIcon from "@/assets/event/close.svg";
+import { lockPageScroll } from "@/utils/scrollLock";
 
 /**
  * 모바일 화면의 하단에서 열리는 모달창 컴포넌트
@@ -22,23 +24,7 @@ function Modal({
   const dragStateRef = useRef({ isDragging: false, pointerId: null, startY: 0 });
   const [dragOffset, setDragOffset] = useState(0);
 
-  useEffect(() => {
-    const prevOverflow = document.body.style.overflow;
-    const prevPaddingRight = document.body.style.paddingRight;
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-    const currentPaddingRight = Number.parseFloat(getComputedStyle(document.body).paddingRight) || 0;
-
-    if (scrollbarWidth > 0) {
-      document.body.style.paddingRight = `${currentPaddingRight + scrollbarWidth}px`;
-    }
-
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      document.body.style.paddingRight = prevPaddingRight;
-    };
-  }, []);
+  useEffect(() => lockPageScroll(), []);
 
   const resetDragState = () => {
     dragStateRef.current = { isDragging: false, pointerId: null, startY: 0 };
@@ -84,10 +70,10 @@ function Modal({
     }
   };
 
-  return (
+  const modalMarkup = (
     <div className={`modal-overlay ${overlayClassName}`.trim()} onClick={onClose}>
       <div
-        className={`modal ${dragToClose ? "modal--draggable" : ""} ${className}`.trim()}
+        className={`modal ${dragToClose ? "modal--draggable" : ""} ${dragOffset > 0 ? "modal--dragging" : ""} ${className}`.trim()}
         style={dragOffset > 0 ? { transform: `translateY(${dragOffset}px)` } : undefined}
         onClick={(e) => e.stopPropagation()}
       >
@@ -112,6 +98,12 @@ function Modal({
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") {
+    return modalMarkup;
+  }
+
+  return createPortal(modalMarkup, document.body);
 }
 
 export default Modal;

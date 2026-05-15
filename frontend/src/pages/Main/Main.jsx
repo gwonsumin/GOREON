@@ -1,8 +1,10 @@
 import "./Main.scss";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useDispatch } from "react-redux";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { useNavigate } from "react-router-dom";
+import Skeleton from "react-loading-skeleton";
+import "react-loading-skeleton/dist/skeleton.css";
 import "swiper/css";
 import AICharacter from "components/AICharacter/AICharacter";
 import Review_user from "assets/icons/review_user.svg";
@@ -20,9 +22,12 @@ import CartIconButton from "components/CartIconButton/CartIconButton";
 import WishlistIconButton from "components/WishlistIconButton/WishlistIconButton";
 import EventModal from "components/EventModal/EventModal";
 import Modal from "components/Modal/Modal";
-import productsData from "@/data/products_list.json";
+import { findProductByName } from "@/api/products";
+import useProductCatalog from "@/hooks/useProductCatalog";
 import { addAiRecommendationHistory } from "@/store/slices/aiRecommendationHistory";
 import api from "@/utils/api";
+import { trackGuidedShopping, trackSelfDiscoveryShopping } from "@/utils/analytics";
+import { getProductListKey, getProductObjectId } from "@/utils/productIdentity";
 import { fetchAiRecommendations } from "@/utils/recommendations";
 import {
   createAiRecommendationHistoryEntry,
@@ -32,30 +37,222 @@ import newProduct1 from "assets/products/newProduct1.png";
 import newProduct2 from "assets/products/newProduct2.png";
 import newProduct3 from "assets/products/newProduct3.png";
 
-const mainProducts = productsData;
 const EMPTY_AI_PLACEHOLDER = "검색어를 입력해주세요!";
 
-const getMainProductById = (id) => mainProducts.find((product) => product.id === id);
+const UPDATE_SHOWCASE_CONFIG = [
+  {
+    productName: "LG전자 2026 그램 프로16 16Z95U-GS5WK",
+    brand: "LG",
+    description: "가벼운 휴대성과 큰 화면으로 작업과 강의에 모두 어울려요",
+    featuredImage: newProduct1,
+  },
+  {
+    productName: "삼성전자 갤럭시북6 프로 NT940XJG-K51A",
+    brand: "삼성",
+    description: "선명한 디스플레이와 안정적인 성능으로 멀티 작업에 좋아요",
+    featuredImage: newProduct2,
+  },
+  {
+    productName: "ASUS Gaming V16 V3607VM-RP005",
+    brand: "ASUS",
+    description: "게임과 콘텐츠 작업을 함께 고려한 고성능 노트북이에요",
+    featuredImage: newProduct3,
+  },
+];
 
-const getMainProduct = (id, overrides = {}) => {
-  const product = getMainProductById(id);
+const UPDATE_MOBILE_EXTRA_CONFIG = {
+  productName: "레노버 LOQ 15AHP10 R7 5060",
+  brand: "레노버",
+  description: "게이밍 입문부터 실사용까지 두루 어울리는 밸런스형 노트북이에요",
+};
+
+const CATEGORY_SECTION_CONFIG = [
+  {
+    id: "direct",
+    label: "영상 편집",
+    icon: Direct,
+    items: [
+      {
+        productName: "APPLE 맥북프로14 M5프로 15코어 CPU, 16코어 GPU 실버",
+        tags: ["#크리에이터", "#영상편집", "#고성능"],
+      },
+      {
+        productName: "LG전자 2026 그램 프로16 16Z95U-GS5WK",
+        tags: ["#대화면", "#휴대성", "#작업용"],
+      },
+      {
+        productName: "삼성전자 갤럭시북6 프로 NT940XJG-K51A",
+        tags: ["#프리미엄", "#멀티작업", "#노트북"],
+      },
+      {
+        productName: "ASUS Gaming V16 V3607VM-RP005",
+        tags: ["#그래픽", "#게이밍겸용", "#콘텐츠"],
+      },
+      {
+        productName: "APPLE 2026 iPad Air 13 M4",
+        tags: ["#태블릿", "#드로잉", "#가벼움"],
+      },
+      {
+        productName: "APPLE 2026 iPad Air 11 M4",
+        tags: ["#휴대성", "#필기", "#M시리즈"],
+      },
+    ],
+  },
+  {
+    id: "game",
+    label: "게이밍",
+    icon: Game,
+    items: [
+      {
+        productName: "ASUS Gaming V16 V3607VM-RP005",
+        tags: ["#게이밍", "#ASUS", "#고성능"],
+      },
+      {
+        productName: "레노버 LOQ 15AHP10 R7 5060",
+        tags: ["#LOQ", "#FPS", "#가성비"],
+      },
+      {
+        productName: "HP 오멘 16-ap0117AX",
+        tags: ["#OMEN", "#몰입감", "#고사양"],
+      },
+      {
+        productName: "HP 오멘 16-ap0074AX",
+        tags: ["#HP", "#게이밍", "#노트북"],
+      },
+      {
+        productName: "MSI 소드 GF76 HX B14WFK-i7 QHD",
+        tags: ["#MSI", "#QHD", "#게임"],
+      },
+      {
+        productName: "MSI 지포스 RTX 5070 게이밍 트리오 OC D7 12GB 트라이프로져4",
+        tags: ["#RTX5070", "#그래픽카드", "#업그레이드"],
+      },
+    ],
+  },
+  {
+    id: "student",
+    label: "학생",
+    icon: Book,
+    items: [
+      {
+        productName: "LG전자 울트라PC 15U50T-GA5HK",
+        tags: ["#가성비", "#문서작업", "#노트북"],
+      },
+      {
+        productName: "HP 15-fc1061AU",
+        tags: ["#실속형", "#온라인강의", "#휴대"],
+      },
+      {
+        productName: "레노버 아이디어패드 Slim3 15IRU8 82X700HWKR WIN11",
+        tags: ["#첫노트북", "#과제", "#윈도우"],
+      },
+      {
+        productName: "ASUS 비보북 15 X1504VA-BQ4270W",
+        tags: ["#ASUS", "#강의", "#입문"],
+      },
+      {
+        productName: "삼성전자 갤럭시북5 NT750XHD-KC51G",
+        tags: ["#삼성", "#대학생", "#휴대성"],
+      },
+      {
+        productName: "APPLE 2025 iPad A16 11세대",
+        tags: ["#태블릿", "#필기", "#가벼움"],
+      },
+    ],
+  },
+  {
+    id: "together",
+    label: "부모님",
+    icon: Together,
+    items: [
+      {
+        productName: "APPLE 2025 iPad Pro 11 M5",
+        tags: ["#큰화면", "#영상통화", "#태블릿"],
+      },
+      {
+        productName: "APPLE 2025 iPad A16 11세대",
+        tags: ["#입문형", "#쉬운사용", "#iPad"],
+      },
+      {
+        productName: "APPLE 2026 iPad Air 13 M4",
+        tags: ["#대화면", "#OTT", "#가족공유"],
+      },
+      {
+        productName: "APPLE 아이폰17 프로 256GB, 자급제",
+        tags: ["#스마트폰", "#카메라", "#자급제"],
+      },
+      {
+        productName: "APPLE 워치 SE 3세대 40mm 스타라이트 알루미늄",
+        tags: ["#건강관리", "#워치", "#알림"],
+      },
+      {
+        productName: "APPLE 2025 iPad Air 11 M3",
+        tags: ["#가벼움", "#유튜브", "#태블릿"],
+      },
+    ],
+  },
+];
+
+const PACKAGE_CARD_CONFIG = [
+  {
+    productName: "AMD 라이젠7-6세대 9800X3D (그래니트 릿지)",
+    title: "영상편집 추천 조합",
+    descriptionLines: ["고성능 CPU · 그래픽카드 중심", "편집 작업에 맞춘 구성"],
+    detailItems: [
+      { productName: "AMD 라이젠7-6세대 9800X3D (그래니트 릿지)", label: "CPU" },
+      { productName: "MSI 지포스 RTX 5060 벤투스 2X OC D7 8GB", label: "VGA" },
+      { productName: "TeamGroup DDR5-5600 CL46 Elite 서린", label: "RAM" },
+      { productName: "Western Digital WD BLACK SN850X M.2 NVMe", label: "SSD" },
+    ],
+  },
+  {
+    productName: "AMD 라이젠7-5세대 7800X3D (라파엘)",
+    title: "게이밍 추천 조합",
+    descriptionLines: ["빠른 반응과 안정적인 프레임", "게임 플레이에 맞춘 구성"],
+    detailItems: [
+      { productName: "AMD 라이젠7-5세대 7800X3D (라파엘)", label: "CPU" },
+      { productName: "MSI 지포스 RTX 5070 게이밍 트리오 OC D7 12GB 트라이프로져4", label: "VGA" },
+      { productName: "ESSENCORE KLEVV DDR5-6000 CL30 CRAS V RGB WHITE 패키지 서린", label: "RAM" },
+      { productName: "ESSENCORE KLEVV CRAS C910G M.2 NVMe", label: "SSD" },
+    ],
+  },
+  {
+    productName: "AMD 라이젠5-5세대 7500F (라파엘)",
+    title: "사무용 추천 조합",
+    descriptionLines: ["문서 작업과 온라인 강의에 적합한", "실속형 데스크탑 구성"],
+    detailItems: [
+      { productName: "AMD 라이젠5-5세대 7500F (라파엘)", label: "CPU" },
+      { productName: "GIGABYTE B650M K 피씨디렉트", label: "메인보드" },
+      { productName: "TeamGroup DDR5-5600 CL46 Elite 서린", label: "RAM" },
+    ],
+  },
+];
+
+const createFallbackMainProduct = (productName, overrides = {}) => ({
+  _id: null,
+  productId: null,
+  legacyId: null,
+  name: overrides.name ?? overrides.title ?? productName ?? "상품명",
+  price: overrides.price ?? "0",
+  image: overrides.image ?? "",
+  rating: overrides.rating ?? 0,
+  tag: overrides.tag ?? [],
+  ...overrides,
+});
+
+const getMainProduct = (products, productName, overrides = {}) => {
+  const product = findProductByName(products, productName);
 
   if (!product) {
-    return {
-      id,
-      name: overrides.name ?? overrides.title ?? "상품명",
-      price: overrides.price ?? "0",
-      image: overrides.image ?? "",
-      rating: overrides.rating ?? 0,
-      tag: overrides.tag ?? [],
-      ...overrides,
-    };
+    return createFallbackMainProduct(productName, overrides);
   }
 
   return {
     ...product,
     ...overrides,
-    id: product.id,
+    _id: product._id,
+    productId: product._id,
+    legacyId: product.id ?? null,
     name: overrides.name ?? product.name,
     price: overrides.price ?? product.price,
     image: overrides.image ?? product.image,
@@ -63,29 +260,22 @@ const getMainProduct = (id, overrides = {}) => {
   };
 };
 
-const createMainProduct = ({
-  id,
-  productId,
-  _id,
-  name,
-  title,
-  price,
-  image,
-  rating,
-  spec,
-  option,
-  tag,
-}) => ({
-  id: id ?? productId ?? _id ?? name ?? title,
-  productId: productId ?? _id ?? id,
-  name: name ?? title ?? "상품명",
-  price,
-  image,
-  rating: rating ?? 0,
-  spec,
-  option,
-  category: Array.isArray(tag) ? tag.at(-1) : tag,
-});
+const createMainProduct = (product = {}) => {
+  const productId = getProductObjectId(product);
+
+  return {
+    ...product,
+    _id: productId,
+    productId,
+    name: product.name ?? product.title ?? "상품명",
+    price: product.price,
+    image: product.image,
+    rating: product.rating ?? 0,
+    spec: product.spec,
+    option: product.option,
+    category: product.category ?? (Array.isArray(product.tag) ? product.tag.at(-1) : product.tag),
+  };
+};
 
 const getPrimaryPriceOption = (product) => product.priceOptions?.[0]?.optionName ?? "기본 옵션";
 
@@ -96,8 +286,8 @@ const createUpdateSpecs = (product, brand) => [
   { label: "평점", value: `${product.rating} / 5` },
 ];
 
-const createUpdateShowcaseItem = ({ productId, brand, description, featuredImage }) => {
-  const product = getMainProduct(productId);
+const createUpdateShowcaseItem = (products, { productName, brand, description, featuredImage }) => {
+  const product = getMainProduct(products, productName);
 
   return {
     ...product,
@@ -110,91 +300,7 @@ const createUpdateShowcaseItem = ({ productId, brand, description, featuredImage
 };
 
 const UPDATE_IMAGE_TRANSITION_DURATION = 220;
-
-const updateShowcaseItems = [
-  createUpdateShowcaseItem({
-    productId: 1,
-    brand: "LG",
-    description: "가벼운 휴대성과 큰 화면으로 작업과 강의에 모두 어울려요",
-    featuredImage: newProduct1,
-  }),
-  createUpdateShowcaseItem({
-    productId: 3,
-    brand: "삼성",
-    description: "선명한 디스플레이와 안정적인 성능으로 멀티 작업에 좋아요",
-    featuredImage: newProduct2,
-  }),
-  createUpdateShowcaseItem({
-    productId: 8,
-    brand: "ASUS",
-    description: "게임과 콘텐츠 작업을 함께 고려한 고성능 노트북이에요",
-    featuredImage: newProduct3,
-  }),
-];
-
-const updateMobileItems = [
-  ...updateShowcaseItems,
-  createUpdateShowcaseItem({
-    productId: 10,
-    brand: "레노버",
-    description: "게이밍 입문부터 실사용까지 두루 어울리는 밸런스형 노트북이에요",
-  }),
-];
-
-const categorySections = [
-  {
-    id: "direct",
-    label: "영상 편집",
-    icon: Direct,
-    items: [
-      getMainProduct(29, { tags: ["#크리에이터", "#영상편집", "#고성능"] }),
-      getMainProduct(1, { tags: ["#대화면", "#휴대성", "#작업용"] }),
-      getMainProduct(3, { tags: ["#프리미엄", "#멀티작업", "#노트북"] }),
-      getMainProduct(8, { tags: ["#그래픽", "#게이밍겸용", "#콘텐츠"] }),
-      getMainProduct(601, { tags: ["#태블릿", "#드로잉", "#가벼움"] }),
-      getMainProduct(592, { tags: ["#휴대성", "#필기", "#M시리즈"] }),
-    ],
-  },
-  {
-    id: "game",
-    label: "게이밍",
-    icon: Game,
-    items: [
-      getMainProduct(8, { tags: ["#게이밍", "#ASUS", "#고성능"] }),
-      getMainProduct(10, { tags: ["#LOQ", "#FPS", "#가성비"] }),
-      getMainProduct(11, { tags: ["#OMEN", "#몰입감", "#고사양"] }),
-      getMainProduct(12, { tags: ["#HP", "#게이밍", "#노트북"] }),
-      getMainProduct(5, { tags: ["#MSI", "#QHD", "#게임"] }),
-      getMainProduct(325, { tags: ["#RTX5070", "#그래픽카드", "#업그레이드"] }),
-    ],
-  },
-  {
-    id: "student",
-    label: "학생",
-    icon: Book,
-    items: [
-      getMainProduct(4, { tags: ["#가성비", "#문서작업", "#노트북"] }),
-      getMainProduct(6, { tags: ["#실속형", "#온라인강의", "#휴대"] }),
-      getMainProduct(7, { tags: ["#첫노트북", "#과제", "#윈도우"] }),
-      getMainProduct(2, { tags: ["#ASUS", "#강의", "#입문"] }),
-      getMainProduct(9, { tags: ["#삼성", "#대학생", "#휴대성"] }),
-      getMainProduct(590, { tags: ["#태블릿", "#필기", "#가벼움"] }),
-    ],
-  },
-  {
-    id: "together",
-    label: "부모님",
-    icon: Together,
-    items: [
-      getMainProduct(589, { tags: ["#큰화면", "#영상통화", "#태블릿"] }),
-      getMainProduct(590, { tags: ["#입문형", "#쉬운사용", "#iPad"] }),
-      getMainProduct(601, { tags: ["#대화면", "#OTT", "#가족공유"] }),
-      getMainProduct(481, { tags: ["#스마트폰", "#카메라", "#자급제"] }),
-      getMainProduct(502, { tags: ["#건강관리", "#워치", "#알림"] }),
-      getMainProduct(606, { tags: ["#가벼움", "#유튜브", "#태블릿"] }),
-    ],
-  },
-];
+const CATEGORY_ITEMS_TRANSITION_DURATION = 420;
 
 const toDisplayPrice = (product) => `￦${product.price}`;
 
@@ -220,9 +326,30 @@ const normalizeImageUrl = (value) => {
   return raw;
 };
 
-const getAiReviewProductId = (product) => product.productId ?? product._id ?? product.id;
+const SkeletonImage = ({
+  src,
+  alt,
+  className = "",
+  skeletonClassName = "",
+  containerClassName = "skeleton-image-container",
+}) => {
+  const imageSrc = normalizeImageUrl(src);
 
-const getProductRouteId = (product) => product.id ?? product.productId ?? product._id;
+  if (!imageSrc) {
+    return (
+      <Skeleton
+        className={`skeleton-image ${className} ${skeletonClassName}`.trim()}
+        containerClassName={containerClassName}
+      />
+    );
+  }
+
+  return <img src={imageSrc} alt={alt} className={className} />;
+};
+
+const getAiReviewProductId = (product) => getProductObjectId(product);
+
+const getProductRouteId = (product) => getProductObjectId(product);
 
 const formatAiReviewUserName = (name) => {
   const trimmedName = String(name ?? "").trim();
@@ -285,6 +412,7 @@ const fetchLatestAiReviews = async ({ products, signal }) => {
 function Main() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const { products: catalogProducts } = useProductCatalog();
   const [showAiResult, setShowAiResult] = useState(false);
   const [isAiSwitching, setIsAiSwitching] = useState(false);
   const [aiQuery, setAiQuery] = useState("");
@@ -297,6 +425,9 @@ function Main() {
   const [aiReviewItems, setAiReviewItems] = useState([]);
   const [aiReviewMessage, setAiReviewMessage] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("direct");
+  const [visibleCategory, setVisibleCategory] = useState("direct");
+  const [previousCategory, setPreviousCategory] = useState(null);
+  const [isCategoryItemsTransitioning, setIsCategoryItemsTransitioning] = useState(false);
   const [selectedSpecProduct, setSelectedSpecProduct] = useState(null);
   const [selectedUpdateIndex, setSelectedUpdateIndex] = useState(0);
   const [hoveredUpdateIndex, setHoveredUpdateIndex] = useState(null);
@@ -314,6 +445,7 @@ function Main() {
   const aiRequestAbortRef = useRef(null);
   const updateImageTransitionTimeoutRef = useRef(null);
   const updateImageTransitionRafRef = useRef(null);
+  const categoryTransitionTimeoutRef = useRef(null);
   const updateImageCacheRef = useRef(new Set());
   const aiResultSectionRef = useRef(null);
   const categorySwiperRef = useRef(null);
@@ -325,63 +457,54 @@ function Main() {
     "👨‍👩‍👦 부모님 쉽게 쓸 테블릿",
     "🖨 가정용 프린터 추천",
   ];
-  const editingPackageItems = [
-    toPackageDetail(getMainProduct(208), "CPU"),
-    toPackageDetail(getMainProduct(324), "VGA"),
-    toPackageDetail(getMainProduct(295), "RAM"),
-    toPackageDetail(getMainProduct(353), "SSD"),
-  ];
-  const gamingPackageItems = [
-    toPackageDetail(getMainProduct(209), "CPU"),
-    toPackageDetail(getMainProduct(325), "VGA"),
-    toPackageDetail(getMainProduct(296), "RAM"),
-    toPackageDetail(getMainProduct(354), "SSD"),
-  ];
-  const officePackageItems = [
-    toPackageDetail(getMainProduct(211), "CPU"),
-    toPackageDetail(getMainProduct(266), "메인보드"),
-    toPackageDetail(getMainProduct(295), "RAM"),
-  ];
-  const packageCards = [
-    {
-      product: getMainProduct(208),
-      title: "영상편집 추천 조합",
-      description: (
-        <>
-          고성능 CPU · 그래픽카드 중심 <br />
-          편집 작업에 맞춘 구성
-        </>
-      ),
-      detailItems: editingPackageItems,
-    },
-    {
-      product: getMainProduct(209),
-      title: "게이밍 추천 조합",
-      description: (
-        <>
-          빠른 반응과 안정적인 프레임 <br />
-          게임 플레이에 맞춘 구성
-        </>
-      ),
-      detailItems: gamingPackageItems,
-    },
-    {
-      product: getMainProduct(211),
-      title: "사무용 추천 조합",
-      description: (
-        <>
-          문서 작업과 온라인 강의에 적합한 <br />
-          실속형 데스크탑 구성
-        </>
-      ),
-      detailItems: officePackageItems,
-    },
-  ];
+
+  const updateShowcaseItems = useMemo(
+    () => UPDATE_SHOWCASE_CONFIG.map((item) => createUpdateShowcaseItem(catalogProducts, item)),
+    [catalogProducts],
+  );
+
+  const updateMobileItems = useMemo(
+    () => [
+      ...updateShowcaseItems,
+      createUpdateShowcaseItem(catalogProducts, UPDATE_MOBILE_EXTRA_CONFIG),
+    ],
+    [catalogProducts, updateShowcaseItems],
+  );
+
+  const categorySections = useMemo(
+    () =>
+      CATEGORY_SECTION_CONFIG.map((section) => ({
+        ...section,
+        items: section.items.map((item) =>
+          getMainProduct(catalogProducts, item.productName, { tags: item.tags }),
+        ),
+      })),
+    [catalogProducts],
+  );
+
+  const packageCards = useMemo(
+    () =>
+      PACKAGE_CARD_CONFIG.map((card) => ({
+        product: getMainProduct(catalogProducts, card.productName),
+        title: card.title,
+        description: (
+          <>
+            {card.descriptionLines[0]} <br />
+            {card.descriptionLines[1]}
+          </>
+        ),
+        detailItems: card.detailItems.map((item) =>
+          toPackageDetail(getMainProduct(catalogProducts, item.productName), item.label),
+        ),
+      })),
+    [catalogProducts],
+  );
+
   const targetUpdateIndex = hoveredUpdateIndex ?? selectedUpdateIndex;
   const targetUpdateItem = updateShowcaseItems[targetUpdateIndex] ?? updateShowcaseItems[0];
   const visibleUpdateItem = updateShowcaseItems[visibleUpdateIndex] ?? updateShowcaseItems[0];
   const incomingUpdateItem =
-    incomingUpdateIndex === null ? null : updateShowcaseItems[incomingUpdateIndex] ?? null;
+    incomingUpdateIndex === null ? null : (updateShowcaseItems[incomingUpdateIndex] ?? null);
   const isUpdatePreviewing =
     hoveredUpdateIndex !== null && hoveredUpdateIndex !== selectedUpdateIndex;
   const updateMobileRowStartIndices = Array.from(
@@ -391,7 +514,11 @@ function Main() {
   const selectedCategorySection =
     categorySections.find((section) => section.id === selectedCategory) ?? categorySections[0];
   const categoryItems = selectedCategorySection.items;
+  const getCategoryItemsById = (categoryId) =>
+    (categorySections.find((section) => section.id === categoryId) ?? categorySections[0])?.items ??
+    [];
   const aiResultItems = aiResults;
+
   const handleInput = (e) => {
     const el = e.target;
     el.style.height = "auto";
@@ -431,7 +558,16 @@ function Main() {
     const promptWithoutEmoji = String(prompt)
       .replace(/^[^\p{L}\p{N}]+/u, "")
       .trim();
-    setAiQuery(promptWithoutEmoji || prompt);
+    const selectedPrompt = promptWithoutEmoji || prompt;
+
+    trackGuidedShopping({
+      signal: "main_ai_prompt_select",
+      source: "main_ai_section",
+      params: {
+        query_length: selectedPrompt.length,
+      },
+    });
+    setAiQuery(selectedPrompt);
     setIsAiInputEmptyError(false);
   };
 
@@ -502,6 +638,14 @@ function Main() {
 
     setIsAiInputEmptyError(false);
 
+    trackGuidedShopping({
+      signal: "main_ai_submit",
+      source: "main_ai_section",
+      params: {
+        query_length: query.length,
+      },
+    });
+
     if (aiRequestAbortRef.current) {
       aiRequestAbortRef.current.abort();
     }
@@ -538,6 +682,15 @@ function Main() {
       setAiStatus(nextResults.length > 0 ? "success" : "empty");
       setAiReviewStatus(nextResults.length > 0 ? "loading" : "idle");
 
+      trackGuidedShopping({
+        signal: "main_ai_recommendation_result_view",
+        source: "main_ai_section",
+        value: nextResults.length,
+        params: {
+          result_count: nextResults.length,
+        },
+      });
+
       if (nextResults.length === 0) {
         return;
       }
@@ -561,9 +714,7 @@ function Main() {
         setAiReviewItems(latestReviews);
         setAiReviewStatus(latestReviews.length > 0 ? "success" : "empty");
         setAiReviewMessage(
-          latestReviews.length > 0
-            ? ""
-            : "추천 상품에 아직 등록된 구매 리뷰가 없습니다.",
+          latestReviews.length > 0 ? "" : "추천 상품에 아직 등록된 구매 리뷰가 없습니다.",
         );
       } catch (reviewError) {
         if (reviewError.name === "CanceledError" || reviewError.name === "AbortError") {
@@ -592,11 +743,41 @@ function Main() {
     }
   };
 
-  const navigateToProduct = (product) => {
+  const handleAiInputKeyDown = (e) => {
+    if (e.key !== "Enter" || e.shiftKey || e.nativeEvent?.isComposing) {
+      return;
+    }
+
+    e.preventDefault();
+
+    if (aiStatus === "loading") {
+      return;
+    }
+
+    handleAiSubmit(e);
+  };
+
+  const navigateToProduct = (product, analyticsContext) => {
     const productId =
       typeof product === "object" && product !== null ? getProductRouteId(product) : product;
 
     if (productId !== undefined && productId !== null) {
+      if (analyticsContext?.behavior === "guided") {
+        trackGuidedShopping({
+          signal: analyticsContext.signal ?? "guided_product_click",
+          source: analyticsContext.source ?? "main_page",
+          label: typeof product === "object" && product !== null ? product.name : undefined,
+        });
+      }
+
+      if (analyticsContext?.behavior === "self_discovery") {
+        trackSelfDiscoveryShopping({
+          signal: analyticsContext.signal ?? "self_discovery_product_click",
+          source: analyticsContext.source ?? "main_page",
+          label: typeof product === "object" && product !== null ? product.name : undefined,
+        });
+      }
+
       navigate(`/product/${productId}`);
     }
   };
@@ -623,7 +804,7 @@ function Main() {
       };
       preloadImage.src = imageSrc;
     });
-  }, []);
+  }, [updateShowcaseItems]);
 
   useEffect(() => {
     const targetItem = updateShowcaseItems[targetUpdateIndex] ?? updateShowcaseItems[0];
@@ -697,7 +878,7 @@ function Main() {
       nextImage.onload = null;
       nextImage.onerror = null;
     };
-  }, [targetUpdateIndex, visibleUpdateIndex]);
+  }, [targetUpdateIndex, visibleUpdateIndex, updateShowcaseItems]);
 
   useEffect(
     () => () => {
@@ -716,9 +897,54 @@ function Main() {
       if (updateImageTransitionRafRef.current) {
         window.cancelAnimationFrame(updateImageTransitionRafRef.current);
       }
+
+      if (categoryTransitionTimeoutRef.current) {
+        window.clearTimeout(categoryTransitionTimeoutRef.current);
+      }
     },
     [],
   );
+
+  useEffect(() => {
+    if (selectedCategory === visibleCategory) {
+      return undefined;
+    }
+
+    setCategorySwiperState((prev) => ({
+      ...prev,
+      progress: 0,
+    }));
+
+    if (categoryTransitionTimeoutRef.current) {
+      window.clearTimeout(categoryTransitionTimeoutRef.current);
+      categoryTransitionTimeoutRef.current = null;
+    }
+
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    if (prefersReducedMotion) {
+      setVisibleCategory(selectedCategory);
+      setPreviousCategory(null);
+      setIsCategoryItemsTransitioning(false);
+      return undefined;
+    }
+
+    setPreviousCategory(visibleCategory);
+    setVisibleCategory(selectedCategory);
+    setIsCategoryItemsTransitioning(true);
+    categoryTransitionTimeoutRef.current = window.setTimeout(() => {
+      setPreviousCategory(null);
+      setIsCategoryItemsTransitioning(false);
+      categoryTransitionTimeoutRef.current = null;
+    }, CATEGORY_ITEMS_TRANSITION_DURATION);
+
+    return () => {
+      if (categoryTransitionTimeoutRef.current) {
+        window.clearTimeout(categoryTransitionTimeoutRef.current);
+        categoryTransitionTimeoutRef.current = null;
+      }
+    };
+  }, [selectedCategory, visibleCategory]);
 
   useEffect(() => {
     if (aiStatus !== "success" || aiResults.length === 0 || !showAiResult || !isDesktopCategory) {
@@ -885,9 +1111,7 @@ function Main() {
     }
 
     if (aiReviewStatus === "loading") {
-      return (
-        <div className="AI_review_state">추천 상품별 최신 구매 리뷰를 불러오는 중입니다.</div>
-      );
+      return <div className="AI_review_state">추천 상품별 최신 구매 리뷰를 불러오는 중입니다.</div>;
     }
 
     if (aiReviewStatus === "error" || aiReviewStatus === "empty") {
@@ -906,11 +1130,33 @@ function Main() {
       );
     }
 
+    const isMobileAiReview = !isTabletCategory && !isDesktopCategory;
+
+    if (isMobileAiReview) {
+      return (
+        <Swiper className="review_box review_swiper" slidesPerView={1.12} spaceBetween={12}>
+          {aiReviewItems.map((review) => (
+            <SwiperSlide key={review.id}>
+              <ReviewCard
+                reviewId={review.id}
+                userImage={review.userImage}
+                userName={review.userName}
+                productName={review.productName}
+                description={review.description}
+                rating={review.rating}
+              />
+            </SwiperSlide>
+          ))}
+        </Swiper>
+      );
+    }
+
     return (
       <div className="review_box">
         {aiReviewItems.map((review) => (
           <ReviewCard
             key={review.id}
+            reviewId={review.id}
             userImage={review.userImage}
             userName={review.userName}
             productName={review.productName}
@@ -971,6 +1217,7 @@ function Main() {
                 placeholder={isAiInputEmptyError ? EMPTY_AI_PLACEHOLDER : "무엇이든 물어보세요!"}
                 value={aiQuery}
                 onChange={handleAiInput}
+                onKeyDown={handleAiInputKeyDown}
               />
               <button className="submit" type="submit" disabled={aiStatus === "loading"}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -991,7 +1238,12 @@ function Main() {
                 variant="result"
                 onSelect={handlePromptSelect}
               />
-              <button className="submit" type="submit" disabled={aiStatus === "loading"}>
+              <button
+                className="submit"
+                type="submit"
+                disabled={aiStatus === "loading"}
+                style={{ paddingRight: "0px" }}
+              >
                 <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
                   <circle cx="20" cy="20" r="20" fill="#0AA6A6" />
                   <path
@@ -1014,9 +1266,16 @@ function Main() {
     const product = createMainProduct(item);
 
     return (
-      <div className="items" key={item.id}>
+      <div className="items" key={getProductListKey(item, item.name)}>
         <div className="item_img_box">
-          <img src={item.image} alt={item.name} className="item_img" />
+          <button
+            type="button"
+            className="item_img_link"
+            onClick={() => navigateToProduct(item)}
+            aria-label={`${item.name} 상세페이지로 이동`}
+          >
+            <SkeletonImage src={item.image} alt={item.name} className="item_img" />
+          </button>
           <div className="icons" onClick={stopCardAction}>
             <CartIconButton product={product} size="sm" />
             <WishlistIconButton product={product} size="sm" />
@@ -1039,29 +1298,58 @@ function Main() {
     );
   };
 
-  const renderCategoryItems = () => {
+  const renderCategorySwiper = (categoryId, { layer = "active", isInteractive = true } = {}) => {
     const isDesktop = isDesktopCategory;
+    const items = getCategoryItemsById(categoryId);
 
     return (
-      <>
+      <div
+        className={`category-items-layer category-items-layer--${layer} ${
+          isCategoryItemsTransitioning ? "is-transitioning" : ""
+        }`.trim()}
+        aria-hidden={!isInteractive}
+      >
         <Swiper
-          key={`category-swiper-${selectedCategory}-${
+          key={`category-swiper-${categoryId}-${
             isDesktop ? "desktop" : isTabletCategory ? "tablet" : "mobile"
           }`}
           className="item_box category_swiper"
           spaceBetween={isDesktop ? 20 : isTabletCategory ? 24 : 10}
           slidesPerView={isDesktop ? 3.15 : isTabletCategory ? 2.7 : 2.1}
           onSwiper={(swiper) => {
-            categorySwiperRef.current = swiper;
-            updateCategorySwiperState(swiper);
+            if (isInteractive) {
+              categorySwiperRef.current = swiper;
+              updateCategorySwiperState(swiper);
+            }
           }}
-          onProgress={updateCategorySwiperState}
-          onSlideChange={updateCategorySwiperState}
+          onProgress={isInteractive ? updateCategorySwiperState : undefined}
+          onSlideChange={isInteractive ? updateCategorySwiperState : undefined}
+          allowTouchMove={isInteractive}
         >
-          {categoryItems.map((item) => (
-            <SwiperSlide key={item.id}>{renderCategoryCard(item)}</SwiperSlide>
+          {items.map((item) => (
+            <SwiperSlide key={getProductListKey(item, item.name)}>
+              {renderCategoryCard(item)}
+            </SwiperSlide>
           ))}
         </Swiper>
+      </div>
+    );
+  };
+
+  const renderCategoryItems = () => {
+    const isDesktop = isDesktopCategory;
+
+    return (
+      <>
+        <div className="category-items-stage">
+          {renderCategorySwiper(visibleCategory, { layer: "active", isInteractive: true })}
+          {previousCategory
+            ? renderCategorySwiper(previousCategory, {
+                layer: "previous",
+                isInteractive: false,
+              })
+            : null}
+        </div>
         <div
           className={`unfilled ${isDesktop ? "unfilled--desktop" : ""}`}
           ref={categoryProgressRef}
@@ -1089,8 +1377,7 @@ function Main() {
     <>
       {packageCards.map((card) => (
         <PackageCard
-          key={card.product.id}
-          product={card.product}
+          key={getProductListKey(card.product, card.title)}
           title={card.title}
           description={card.description}
           price={toDisplayPrice(card.product)}
@@ -1113,9 +1400,8 @@ function Main() {
         spaceBetween={isTabletCategory ? 28 : 24}
       >
         {packageCards.map((card) => (
-          <SwiperSlide key={`package-${card.product.id}`}>
+          <SwiperSlide key={`package-${getProductListKey(card.product, card.title)}`}>
             <PackageCard
-              product={card.product}
               title={card.title}
               description={card.description}
               price={toDisplayPrice(card.product)}
@@ -1159,20 +1445,30 @@ function Main() {
             }}
           >
             {aiResultItems.map((item, index) => (
-              <SwiperSlide key={`ai-result-${item.id ?? index}`}>
+              <SwiperSlide key={`ai-result-${getProductListKey(item, String(index))}`}>
                 <div
                   className="recommend"
                   role="button"
                   tabIndex={0}
-                  onClick={() => navigateToProduct(item.id)}
+                  onClick={() =>
+                    navigateToProduct(item, {
+                      behavior: "guided",
+                      signal: "main_ai_recommendation_product_click",
+                      source: "main_ai_section",
+                    })
+                  }
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
-                      navigateToProduct(item.id);
+                      navigateToProduct(item, {
+                        behavior: "guided",
+                        signal: "main_ai_recommendation_product_click",
+                        source: "main_ai_section",
+                      });
                     }
                   }}
                 >
-                  <img src={item.image} alt={item.name} />
+                  <SkeletonImage src={item.image} alt={item.name} className="recommend_img" />
                   <div className="texts">
                     <p>{item.name}</p>
                     <p>{item.spec}</p>
@@ -1185,7 +1481,11 @@ function Main() {
                       aria-label={`${item.name} 상세페이지로 이동`}
                       onClick={(event) => {
                         event.stopPropagation();
-                        navigateToProduct(item.id);
+                        navigateToProduct(item, {
+                          behavior: "guided",
+                          signal: "main_ai_recommendation_product_click",
+                          source: "main_ai_section",
+                        });
                       }}
                     >
                       <svg viewBox="0 0 24 12">
@@ -1218,6 +1518,7 @@ function Main() {
                 }
                 value={aiQuery}
                 onChange={handleAiInput}
+                onKeyDown={handleAiInputKeyDown}
               />
               <button className="submit" type="submit" disabled={aiStatus === "loading"}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -1248,9 +1549,6 @@ function Main() {
               </button>
             </div>
           </form>
-          <div className="AI_container">
-            <AICharacter className="AI_logo" />
-          </div>
         </div>
       </div>
     </div>
@@ -1291,7 +1589,14 @@ function Main() {
                   key={section.id}
                   type="button"
                   className={`category ${isActive ? "is-active" : ""}`.trim()}
-                  onClick={() => setSelectedCategory(section.id)}
+                  onClick={() => {
+                    trackSelfDiscoveryShopping({
+                      signal: "main_purpose_category_select",
+                      source: "main_purpose_category",
+                      label: section.label,
+                    });
+                    setSelectedCategory(section.id);
+                  }}
                   aria-pressed={isActive}
                 >
                   <img src={section.icon} alt="" aria-hidden="true" />
@@ -1337,11 +1642,9 @@ function Main() {
                 }
               }}
             >
-              <div
-                className={`main_item__image ${incomingUpdateItem ? "is-transitioning" : ""}`}
-              >
-                <img
-                  key={`featured-current-${visibleUpdateItem.id}`}
+              <div className={`main_item__image ${incomingUpdateItem ? "is-transitioning" : ""}`}>
+                <SkeletonImage
+                  key={`featured-current-${getProductListKey(visibleUpdateItem, "featured-current")}`}
                   src={visibleUpdateItem.featuredImage}
                   alt={visibleUpdateItem.title}
                   className={`featured_img featured_img--current ${
@@ -1349,8 +1652,8 @@ function Main() {
                   }`}
                 />
                 {incomingUpdateItem && (
-                  <img
-                    key={`featured-next-${incomingUpdateItem.id}`}
+                  <SkeletonImage
+                    key={`featured-next-${getProductListKey(incomingUpdateItem, "featured-next")}`}
                     src={incomingUpdateItem.featuredImage}
                     alt={incomingUpdateItem.title}
                     className={`featured_img featured_img--incoming ${
@@ -1374,18 +1677,15 @@ function Main() {
                 </div>
                 <div className="icons">
                   <CartIconButton product={createMainProduct(targetUpdateItem)} size="sm" />
-                  <WishlistIconButton
-                    product={createMainProduct(targetUpdateItem)}
-                    size="sm"
-                  />
+                  <WishlistIconButton product={createMainProduct(targetUpdateItem)} size="sm" />
                 </div>
               </div>
             </div>
             <div className="sub_item">
               {updateShowcaseItems.map((item, index) => (
                 <UpdateSubCard
-                  key={item.id}
-                  thumbnailImage={item.thumbnailImage}
+                  key={getProductListKey(item, item.name)}
+                  thumbnailImage={normalizeImageUrl(item.thumbnailImage)}
                   title={item.title}
                   description={item.description}
                   isActive={selectedUpdateIndex === index}
@@ -1420,7 +1720,7 @@ function Main() {
                     >
                       <div className="items">
                         <div className="item_img_box">
-                          <img
+                          <SkeletonImage
                             src={item.thumbnailImage}
                             alt={item.name}
                             className="item_img"
@@ -1456,11 +1756,19 @@ function Main() {
 
       <EventModal isOpen={isEventModalOpen} onClose={() => setIsEventModalOpen(false)} />
       {selectedSpecProduct && (
-        <Modal title="주요스펙" onClose={() => setSelectedSpecProduct(null)}>
+        <Modal
+          title="주요스펙"
+          onClose={() => setSelectedSpecProduct(null)}
+          className="main-spec-sheet-modal"
+        >
           <div className="main-spec-modal">
             <div className="main-spec-modal__summary">
               <div className="main-spec-modal__image">
-                <img src={selectedSpecProduct.image} alt={selectedSpecProduct.name} />
+                <SkeletonImage
+                  src={selectedSpecProduct.image}
+                  alt={selectedSpecProduct.name}
+                  className="main-spec-modal__img"
+                />
               </div>
               <div className="main-spec-modal__product">
                 <p className="main-spec-modal__name">{selectedSpecProduct.name}</p>

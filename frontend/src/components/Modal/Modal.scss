@@ -1,10 +1,10 @@
-@import "styles/variables";
+@use "styles/variables" as *;
 
 .modal-overlay {
   position: fixed;
   inset: 0;
   background-color: rgba(0, 0, 0, 0.3);
-  z-index: 9999;
+  z-index: 101;
   display: flex;
   justify-content: center;
   align-items: flex-end;
@@ -15,16 +15,21 @@
 }
 
 .modal {
+  bottom: 95px;
   position: relative;
-  width: 100vw;
+  width: 100%;
   background: $color-white;
-  border-radius: 16px 16px 0 0;
+  border-radius: 16px 16px 16px 16px;
   padding: $layout-mobile-padding;
   max-width: $breakpoint-desktop;
   transition: transform 0.2s ease;
 
   &--draggable {
     touch-action: pan-y;
+  }
+
+  &--dragging {
+    transition: none;
   }
 
   &__drag-zone {

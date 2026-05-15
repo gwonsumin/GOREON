@@ -13,6 +13,7 @@ import {
   createTextMessage,
 } from "./chatData";
 import { addAiRecommendationHistory } from "@/store/slices/aiRecommendationHistory";
+import { trackGuidedShopping } from "@/utils/analytics";
 import { fetchAiRecommendations } from "@/utils/recommendations";
 import {
   createAiRecommendationHistoryEntry,
@@ -25,12 +26,78 @@ const PREVIEW_DURATION_MS = 3200;
 const LOADING_DURATION_MS = 700;
 const PRODUCT_DELAY_MS = 200;
 const TYPING_SPEED_MS = 45;
+const CHAT_MESSAGES_STORAGE_KEY = "goreon:chat-widget:messages";
 
 const createStatusState = () => ({
   isLoading: false,
   isTyping: false,
   error: null,
 });
+
+const getChatStorage = () => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+};
+
+const removePendingAssistantMessages = (messages) =>
+  messages.filter((message) => message.type !== "loading" && !message.isStreaming);
+
+const isValidStoredMessages = (messages) =>
+  Array.isArray(messages) &&
+  messages.length > 0 &&
+  messages.every(
+    (message) =>
+      message &&
+      typeof message.id === "string" &&
+      typeof message.sender === "string" &&
+      typeof message.type === "string",
+  );
+
+const loadStoredMessages = (fallbackMessages) => {
+  const storage = getChatStorage();
+
+  if (!storage) {
+    return fallbackMessages;
+  }
+
+  try {
+    const rawMessages = storage.getItem(CHAT_MESSAGES_STORAGE_KEY);
+
+    if (!rawMessages) {
+      return fallbackMessages;
+    }
+
+    const storedMessages = removePendingAssistantMessages(JSON.parse(rawMessages));
+
+    return isValidStoredMessages(storedMessages) ? storedMessages : fallbackMessages;
+  } catch {
+    return fallbackMessages;
+  }
+};
+
+const persistMessages = (messages) => {
+  const storage = getChatStorage();
+
+  if (!storage) {
+    return;
+  }
+
+  try {
+    storage.setItem(
+      CHAT_MESSAGES_STORAGE_KEY,
+      JSON.stringify(removePendingAssistantMessages(messages)),
+    );
+  } catch {
+    // localStorage may be unavailable in private mode or when quota is exceeded.
+  }
+};
 
 function FloatingChatWidget() {
   const dispatch = useDispatch();
@@ -46,7 +113,7 @@ function FloatingChatWidget() {
   const [hasOpenedOnce, setHasOpenedOnce] = useState(false);
   const [mode, setMode] = useState(CHAT_MODE.IDLE);
   const [draft, setDraft] = useState("");
-  const [messages, setMessages] = useState(initialMessagesRef.current);
+  const [messages, setMessages] = useState(() => loadStoredMessages(initialMessagesRef.current));
   const [status, setStatus] = useState(createStatusState());
   const [isSuppressed, setIsSuppressed] = useState(false);
 
@@ -128,6 +195,10 @@ function FloatingChatWidget() {
     },
     [abortRecommendationRequest, clearResponseTimers],
   );
+
+  useEffect(() => {
+    persistMessages(messages);
+  }, [messages]);
 
   useLayoutEffect(() => {
     const hiddenSections = Array.from(document.querySelectorAll("[data-hide-floating-chat]"));
@@ -233,6 +304,10 @@ function FloatingChatWidget() {
       return;
     }
 
+    trackGuidedShopping({
+      signal: "ai_chat_open",
+      source: "floating_chat",
+    });
     setHasOpenedOnce(true);
     setMode(hasChatHistory ? CHAT_MODE.CHATTING : CHAT_MODE.INITIAL);
   };
@@ -260,6 +335,15 @@ function FloatingChatWidget() {
   };
 
   const handleClose = () => {
+    cancelPendingAssistantResponse();
+    setMode(CHAT_MODE.IDLE);
+  };
+
+  const handleProductDetailClick = () => {
+    trackGuidedShopping({
+      signal: "ai_chat_recommendation_product_click",
+      source: "floating_chat",
+    });
     cancelPendingAssistantResponse();
     setMode(CHAT_MODE.IDLE);
   };
@@ -362,6 +446,14 @@ function FloatingChatWidget() {
       return;
     }
 
+    trackGuidedShopping({
+      signal: "ai_chat_message_submit",
+      source: "floating_chat",
+      params: {
+        query_length: trimmedQuestion.length,
+      },
+    });
+
     clearResponseTimers();
     abortRecommendationRequest();
 
@@ -385,8 +477,7 @@ function FloatingChatWidget() {
       error: null,
     });
     setMessages((prevMessages) => {
-      const nextMessages =
-        mode === CHAT_MODE.INITIAL ? initialMessagesRef.current : prevMessages;
+      const nextMessages = mode === CHAT_MODE.INITIAL ? initialMessagesRef.current : prevMessages;
 
       return [...nextMessages, userMessage, loadingMessage];
     });
@@ -411,6 +502,15 @@ function FloatingChatWidget() {
           ? "현재 상품 데이터 기준으로 조건에 가까운 제품을 골랐어요."
           : "조건에 맞는 상품을 찾지 못했어요. 조건을 조금 더 넓혀볼까요?");
       const chatProducts = normalizedProducts.map(toChatRecommendationProduct);
+
+      trackGuidedShopping({
+        signal: "ai_chat_recommendation_result_view",
+        source: "floating_chat",
+        value: normalizedProducts.length,
+        params: {
+          result_count: normalizedProducts.length,
+        },
+      });
 
       if (normalizedProducts.length > 0) {
         dispatch(
@@ -477,12 +577,7 @@ function FloatingChatWidget() {
   }
 
   return (
-    <div
-      className="chat-widget"
-      ref={widgetRef}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-    >
+    <div className="chat-widget" ref={widgetRef}>
       {isOpen && (
         <ChatPanel
           isOpen={isOpen}
@@ -494,7 +589,17 @@ function FloatingChatWidget() {
           error={status.error}
           onDraftChange={setDraft}
           onSendMessage={handleSendMessage}
-          onSuggestionClick={handleSendMessage}
+          onSuggestionClick={(suggestion) => {
+            trackGuidedShopping({
+              signal: "ai_chat_suggestion_click",
+              source: "floating_chat",
+              params: {
+                query_length: suggestion.length,
+              },
+            });
+            handleSendMessage(suggestion);
+          }}
+          onProductDetailClick={handleProductDetailClick}
           onBack={handleBack}
           onClose={handleClose}
         />
@@ -506,6 +611,8 @@ function FloatingChatWidget() {
         isOpen={isOpen}
         isPreviewVisible={isPreviewVisible}
         onToggle={handleToggle}
+        onPreviewEnter={handleMouseEnter}
+        onPreviewLeave={handleMouseLeave}
       />
     </div>
   );

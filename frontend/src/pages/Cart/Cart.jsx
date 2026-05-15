@@ -11,12 +11,15 @@ import { Link } from "react-router-dom";
 
 import AddressModal from "../../components/AddressModal/AddressModal";
 import ProductList from "../../components/ProductList/ProductList";
+import { useToast } from "@/components/Toast/toastContext";
 import { removeCartItems, updateCartQuantity } from "../../store/slices/cartSlice";
 import { EMPTY_SHIPPING_FORM, formatPrice, getCartItems, summarizeOrder } from "../../utils/cart";
+import { formatPhoneNumber } from "../../utils/phoneNumber";
 
 export default function Cart() {
   const dispatch = useDispatch();
   const storedCartItems = useSelector((state) => state.cart.items);
+  const userPhone = useSelector((state) => state.user.userInfo?.phone || "");
   const cartItems = useMemo(() => getCartItems(storedCartItems), [storedCartItems]);
 
   const [selectedItemIds, setSelectedItemIds] = useState(cartItems.map((item) => item.id));
@@ -27,6 +30,23 @@ export default function Cart() {
     const cartItemIds = new Set(cartItems.map((item) => item.id));
     setSelectedItemIds((prevIds) => prevIds.filter((id) => cartItemIds.has(id)));
   }, [cartItems]);
+
+  useEffect(() => {
+    if (!userPhone) {
+      return;
+    }
+
+    setShippingForm((prevShippingForm) => {
+      if (prevShippingForm.phone) {
+        return prevShippingForm;
+      }
+
+      return {
+        ...prevShippingForm,
+        phone: formatPhoneNumber(userPhone),
+      };
+    });
+  }, [userPhone]);
 
   const selectedItems = useMemo(
     () => cartItems.filter((item) => selectedItemIds.includes(item.id)),
@@ -63,10 +83,11 @@ export default function Cart() {
 
   const handleShippingFieldChange = ({ target }) => {
     const { name, value } = target;
+    const nextValue = name === "phone" ? formatPhoneNumber(value) : value;
 
     setShippingForm((prevShippingForm) => ({
       ...prevShippingForm,
-      [name]: value,
+      [name]: nextValue,
     }));
   };
 
@@ -92,6 +113,12 @@ export default function Cart() {
     },
     [closeAddressModal],
   );
+  const { showToast } = useToast();
+  const handleClick = (event) => {
+    event.stopPropagation();
+
+    showToast("MVP로 구현되어 작성 없이 결제하기 버튼을 눌러도 결제가 완료됩니다.");
+  };
 
   return (
     <section className="cart-page">
@@ -109,7 +136,7 @@ export default function Cart() {
           <div className="cart-page__progress-step">
             <Link
               to="/payment"
-              state={{ orderItems: selectedItems, shippingForm }}
+              state={{ orderItems: selectedItems, shippingForm, checkoutSource: "cart" }}
               className="cart-page__progress-link"
             >
               2
@@ -186,6 +213,9 @@ export default function Cart() {
                     value={shippingForm.phone}
                     onChange={handleShippingFieldChange}
                     placeholder="010-0000-0000"
+                    inputMode="numeric"
+                    autoComplete="tel"
+                    maxLength={13}
                   />
                 </div>
               </label>
@@ -264,8 +294,11 @@ export default function Cart() {
 
           <Link
             to="/payment"
-            state={{ orderItems: selectedItems, shippingForm }}
+            state={{ orderItems: selectedItems, shippingForm, checkoutSource: "cart" }}
             className="cart-page__checkout-button"
+            onClick={(event) => {
+              handleClick(event);
+            }}
           >
             결제하기
           </Link>

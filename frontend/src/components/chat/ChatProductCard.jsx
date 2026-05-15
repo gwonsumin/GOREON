@@ -1,20 +1,49 @@
 import { Link } from "react-router-dom";
+
+import ProductHeroImage from "@/assets/img/intel-core-ultra5-250kf-plus-product-image-genuine.jpg";
+import { normalizeImageUrl } from "@/utils/image";
+import { buildProductDetailPath } from "@/utils/productIdentity";
 import CartIconButton from "../CartIconButton/CartIconButton";
 import WishlistIconButton from "../WishlistIconButton/WishlistIconButton";
 
-function ChatProductCard({ product }) {
+function ChatProductCard({ product, onViewDetails }) {
   const tags = Array.isArray(product.tags) ? product.tags : [];
-  const detailPath = product.detailPath ?? `/product/${product.productId ?? product.id ?? 1}`;
+  const detailPath = product.detailPath ?? buildProductDetailPath(product) ?? "/product";
+  const imageSrc = normalizeImageUrl(product.image) || ProductHeroImage;
 
   return (
     <article className="chat-widget__product-card">
       <div className="chat-widget__product-media">
-        <img src={product.image} alt={product.name} className="chat-widget__product-image" />
+        <img
+          src={imageSrc}
+          alt={product.name}
+          className="chat-widget__product-image"
+          onError={(event) => {
+            event.currentTarget.onerror = null;
+            event.currentTarget.src = ProductHeroImage;
+          }}
+        />
 
         <div className="chat-widget__product-actions">
-          <CartIconButton product={product} className="chat-widget__icon-button" />
+          <CartIconButton
+            product={product}
+            className="chat-widget__icon-button"
+            analyticsContext={{
+              behavior: "guided",
+              signal: "ai_chat_recommendation_add_to_cart",
+              source: "floating_chat",
+            }}
+          />
 
-          <WishlistIconButton product={product} className="chat-widget__favorite-button" />
+          <WishlistIconButton
+            product={product}
+            className="chat-widget__favorite-button"
+            analyticsContext={{
+              behavior: "guided",
+              signal: "ai_chat_recommendation_wishlist",
+              source: "floating_chat",
+            }}
+          />
         </div>
       </div>
 
@@ -33,7 +62,7 @@ function ChatProductCard({ product }) {
 
         <p className="chat-widget__product-price">{product.price}</p>
 
-        <Link to={detailPath} className="chat-widget__product-link">
+        <Link to={detailPath} className="chat-widget__product-link" onClick={onViewDetails}>
           {product.ctaLabel}
         </Link>
       </div>

@@ -8,11 +8,16 @@ const ACCESS_COOKIE_MAX_AGE = 15 * 60 * 1000;
 const REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 
 const isProduction = () => process.env.NODE_ENV === "production";
+const getCookieDomain = () => {
+  const domain = String(process.env.COOKIE_DOMAIN || "").trim();
+  return domain || undefined;
+};
 
 const getBaseCookieOptions = () => ({
   httpOnly: true,
   secure: isProduction(),
   sameSite: isProduction() ? "none" : "lax",
+  domain: getCookieDomain(),
 });
 
 const getAccessCookieOptions = () => ({
@@ -53,19 +58,9 @@ const parseCookies = (req) => {
   }, {});
 };
 
-const getBearerToken = (req) => {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return null;
-  }
-
-  return authHeader.split(" ")[1] || null;
-};
-
 const getAccessTokenFromRequest = (req) => {
   const cookies = parseCookies(req);
-  return cookies[ACCESS_COOKIE_NAME] || getBearerToken(req);
+  return cookies[ACCESS_COOKIE_NAME] || null;
 };
 
 const getRefreshTokenFromRequest = (req) => {

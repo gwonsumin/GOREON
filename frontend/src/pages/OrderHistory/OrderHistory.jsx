@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import ProductHeroImage from "@/assets/img/intel-core-ultra5-250kf-plus-product-image-genuine.jpg";
+import RouteLoading from "@/components/RouteLoading/RouteLoading";
 import { useToast } from "@/components/Toast/toastContext";
 import ReviewWrite from "@/components/ReviewWrite/ReviewWrite";
+import { normalizeImageUrl } from "@/utils/image";
+import { buildProductDetailPath } from "@/utils/productIdentity";
 import api from "../../utils/api";
 import "./OrderHistory.scss";
 
@@ -41,7 +45,8 @@ const groupOrdersByDate = (orders) => {
       ...items.map((item, index) => ({
         ...item,
         orderId: order._id,
-        orderStatus: order.status,
+        itemStatus: order.status === "confirmed" ? "confirmed" : item.status || order.status,
+        itemIndex: index,
         itemKey: `${order._id}-${item.product}-${index}`,
       })),
     );
@@ -59,7 +64,8 @@ function OrderHistory() {
   const [orders, setOrders] = useState([]);
   const [fetchStatus, setFetchStatus] = useState("loading");
   const [reviewTarget, setReviewTarget] = useState(null);
-  const [confirmingOrderIds, setConfirmingOrderIds] = useState([]);
+  const [productReviews, setProductReviews] = useState({});
+  const [confirmingItemKeys, setConfirmingItemKeys] = useState([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -101,24 +107,83 @@ function OrderHistory() {
 
   const groupedOrders = useMemo(() => groupOrdersByDate(orders), [orders]);
 
-  const handleConfirmPurchase = async (orderId) => {
-    try {
-      setConfirmingOrderIds((prev) => [...prev, orderId]);
+  useEffect(() => {
+    const confirmedProductIds = [
+      ...new Set(
+        orders.flatMap((order) =>
+          (Array.isArray(order.items) ? order.items : [])
+            .filter(
+              (item) =>
+                (order.status === "confirmed" ? "confirmed" : item.status || order.status) ===
+                "confirmed",
+            )
+            .map((item) => item.product)
+            .filter(Boolean)
+            .map(String),
+        ),
+      ),
+    ];
 
-      const response = await api.patch(`/orders/${orderId}/confirm`);
+    if (confirmedProductIds.length === 0) {
+      setProductReviews({});
+      return undefined;
+    }
+
+    let isMounted = true;
+
+    const fetchMyReviews = async () => {
+      const reviewEntries = await Promise.all(
+        confirmedProductIds.map(async (productId) => {
+          try {
+            const response = await api.get(`/reviews/${productId}/me`);
+            return [productId, response.data || null];
+          } catch {
+            return [productId, null];
+          }
+        }),
+      );
+
+      if (isMounted) {
+        setProductReviews(Object.fromEntries(reviewEntries));
+      }
+    };
+
+    fetchMyReviews();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [orders]);
+
+  const handleReviewSaved = (savedReview) => {
+    if (savedReview?.product) {
+      setProductReviews((prevReviews) => ({
+        ...prevReviews,
+        [String(savedReview.product)]: savedReview,
+      }));
+    }
+
+    setReviewTarget(null);
+  };
+
+  const handleConfirmPurchase = async (orderId, itemIndex) => {
+    const confirmingKey = `${orderId}-${itemIndex}`;
+
+    try {
+      setConfirmingItemKeys((prev) => [...prev, confirmingKey]);
+
+      const response = await api.patch(`/orders/${orderId}/items/${itemIndex}/confirm`);
       const confirmedOrder = response.data;
 
       setOrders((prevOrders) =>
-        prevOrders.map((order) =>
-          order._id === confirmedOrder._id ? confirmedOrder : order,
-        ),
+        prevOrders.map((order) => (order._id === confirmedOrder._id ? confirmedOrder : order)),
       );
 
       showToast("구매가 확정되었습니다.");
     } catch (error) {
       showToast(error.response?.data?.message || "구매 확정에 실패했습니다.");
     } finally {
-      setConfirmingOrderIds((prev) => prev.filter((id) => id !== orderId));
+      setConfirmingItemKeys((prev) => prev.filter((key) => key !== confirmingKey));
     }
   };
 
@@ -126,16 +191,33 @@ function OrderHistory() {
     showToast("배송 조회 서비스 준비중입니다.");
   };
 
+  const handleItemSelect = (detailPath) => {
+    if (detailPath) {
+      navigate(detailPath);
+    }
+  };
+
+  const handleItemKeyDown = (event, detailPath) => {
+    if (!detailPath || (event.key !== "Enter" && event.key !== " ")) {
+      return;
+    }
+
+    event.preventDefault();
+    navigate(detailPath);
+  };
+
   const renderItemActions = (item) => {
-    const isConfirmed = item.orderStatus === "confirmed";
-    const isConfirming = confirmingOrderIds.includes(item.orderId);
+    const isConfirmed = item.itemStatus === "confirmed";
+    const confirmingKey = `${item.orderId}-${item.itemIndex}`;
+    const isConfirming = confirmingItemKeys.includes(confirmingKey);
+    const existingReview = productReviews[String(item.product)] || null;
 
     if (!isConfirmed) {
       return (
         <button
           type="button"
           className="order-history-item__action-button order-history-item__action-button--confirm"
-          onClick={() => handleConfirmPurchase(item.orderId)}
+          onClick={() => handleConfirmPurchase(item.orderId, item.itemIndex)}
           disabled={isConfirming}
         >
           {isConfirming ? "처리중..." : "구매 확정"}
@@ -155,9 +237,9 @@ function OrderHistory() {
         <button
           type="button"
           className="order-history-item__action-button order-history-item__action-button--review"
-          onClick={() => setReviewTarget({ productId: item.product })}
+          onClick={() => setReviewTarget({ productId: item.product, review: existingReview })}
         >
-          리뷰 작성
+          {existingReview ? "리뷰 수정" : "리뷰 작성"}
         </button>
       </>
     );
@@ -195,9 +277,7 @@ function OrderHistory() {
         <div className="order-history-page__groups">
           {fetchStatus === "loading" ? (
             <section className="order-history-page__group">
-              <div className="order-history-page__card">
-                <p>주문내역을 불러오는 중입니다.</p>
-              </div>
+              <RouteLoading message="주문내역을 불러오는 중입니다..." variant="card" />
             </section>
           ) : fetchStatus === "error" ? (
             <section className="order-history-page__group">
@@ -222,13 +302,28 @@ function OrderHistory() {
                 <div className="order-history-page__card">
                   {group.items.map((item, idx) => {
                     const itemKey = item.itemKey;
+                    const thumbSrc = normalizeImageUrl(item.thumb) || ProductHeroImage;
+                    const detailPath = buildProductDetailPath(item.product);
 
                     return (
                       <div key={itemKey}>
-                        <article className="order-history-item">
+                        <article
+                          className={`order-history-item${detailPath ? " order-history-item--clickable" : ""}`}
+                          role={detailPath ? "link" : undefined}
+                          tabIndex={detailPath ? 0 : undefined}
+                          onClick={() => handleItemSelect(detailPath)}
+                          onKeyDown={(event) => handleItemKeyDown(event, detailPath)}
+                        >
                           <div className="order-history-item__top">
                             <div className="order-history-item__thumb">
-                              <img src={item.thumb} alt={item.name} />
+                              <img
+                                src={thumbSrc}
+                                alt={item.name}
+                                onError={(event) => {
+                                  event.currentTarget.onerror = null;
+                                  event.currentTarget.src = ProductHeroImage;
+                                }}
+                              />
                             </div>
 
                             <div className="order-history-item__info">
@@ -241,12 +336,20 @@ function OrderHistory() {
                               </span>
                             </div>
 
-                            <div className="order-history-item__action">
+                            <div
+                              className="order-history-item__action"
+                              onClick={(event) => event.stopPropagation()}
+                              onKeyDown={(event) => event.stopPropagation()}
+                            >
                               {renderItemActions(item)}
                             </div>
                           </div>
 
-                          <div className="order-history-item__action--mobile">
+                          <div
+                            className="order-history-item__action--mobile"
+                            onClick={(event) => event.stopPropagation()}
+                            onKeyDown={(event) => event.stopPropagation()}
+                          >
                             {renderItemActions(item)}
                           </div>
                         </article>
@@ -265,7 +368,12 @@ function OrderHistory() {
       </div>
 
       {reviewTarget && (
-        <ReviewWrite productId={reviewTarget.productId} onClose={() => setReviewTarget(null)} />
+        <ReviewWrite
+          productId={reviewTarget.productId}
+          initialReview={reviewTarget.review}
+          onClose={() => setReviewTarget(null)}
+          onSaved={handleReviewSaved}
+        />
       )}
     </section>
   );
