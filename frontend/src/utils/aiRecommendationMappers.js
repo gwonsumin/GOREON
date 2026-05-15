@@ -3,8 +3,7 @@ const DEFAULT_PRODUCT_SPEC = "상품 데이터 기준 추천";
 const DEFAULT_PRODUCT_DESCRIPTION = "조건에 맞는 추천 상품입니다.";
 const DEFAULT_CHAT_TAG = "#AI추천";
 
-const createAiRecommendationId = () =>
-  `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+const createAiRecommendationId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
 const normalizeMatchedCriteria = (matchedCriteria) =>
   Array.isArray(matchedCriteria) ? matchedCriteria.filter(Boolean) : [];
@@ -56,16 +55,16 @@ const formatChatPrice = (price) => {
   return `₩${normalized}`;
 };
 
-const getProductRouteId = (product) =>
-  product?.productId ?? product?._id ?? product?.id ?? product?.name ?? "1";
+const getProductRouteId = (product) => getProductObjectId(product) ?? product?.name ?? "1";
 
 export const normalizeAiRecommendationProduct = (item = {}) => {
   const tags = normalizeTags(item.tag ?? item.tags);
   const reason = item.reason;
 
   return {
-    id: item.id ?? item.productId ?? item._id,
-    productId: item.productId ?? item._id ?? item.id,
+    id: getProductObjectId(item) ?? item.id,
+    _id: getProductObjectId(item),
+    productId: getProductObjectId(item),
     name: item.name ?? item.title ?? DEFAULT_PRODUCT_NAME,
     price: item.price ?? "0",
     image: item.image ?? item.heroImage ?? item.thumbnailImage ?? item.thumbnail ?? "",
@@ -95,7 +94,8 @@ export const toChatRecommendationProduct = (product = {}) => {
 
   return {
     ...product,
-    id: product.id ?? productId,
+    id: productId,
+    _id: productId,
     productId,
     image: product.image ?? "",
     name: product.name ?? DEFAULT_PRODUCT_NAME,
@@ -107,3 +107,4 @@ export const toChatRecommendationProduct = (product = {}) => {
     ctaLabel: "자세히 보기",
   };
 };
+import { getProductObjectId } from "@/utils/productIdentity";

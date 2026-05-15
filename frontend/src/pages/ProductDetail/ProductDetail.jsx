@@ -1,89 +1,65 @@
 ﻿import "./ProductDetail.scss";
-import productList from "@/data/products_list.json";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate, useParams } from "react-router-dom";
 import { FreeMode } from "swiper/modules";
 import { Swiper, SwiperSlide } from "swiper/react";
 import "swiper/css";
 import arrowIcon from "@/assets/icons/prev.svg";
+import { fetchProductById } from "@/api/products";
+import RouteLoading from "@/components/RouteLoading/RouteLoading";
 import { useToast } from "@/components/Toast/toastContext";
 import WishlistIconButton from "@/components/WishlistIconButton/WishlistIconButton";
 import ReviewSection from "../../components/ReviewSection/ReviewSection";
+import ReviewWrite from "@/components/ReviewWrite/ReviewWrite";
 import { addToCart } from "../../store/slices/cartSlice";
 import { addRecentViewed } from "@/store/slices/recentViewed";
 import ChevronDown from "../../assets/icons/chevron-down.svg";
 import api from "../../utils/api";
+import { normalizeImageUrl } from "@/utils/image";
+import { trackViewProduct } from "@/utils/analytics";
 
 import ProductHeroImage from "../../assets/img/intel-core-ultra5-250kf-plus-product-image-genuine.jpg";
 
 const formatPrice = (price) => `￦ ${price.toLocaleString("ko-KR")}`;
 const parsePrice = (value) => Number(String(value ?? "0").replace(/[^0-9]/g, "")) || 0;
-const normalizeImageUrl = (value) => {
-  const raw = String(value ?? "").trim();
-  if (!raw) {
-    return "";
-  }
-  if (raw.startsWith("http:///")) {
-    return "";
-  }
-  if (raw.startsWith("http://")) {
-    return `https://${raw.slice("http://".length)}`;
-  }
-  return raw;
-};
+
+const getUserId = (user) => String(user?._id ?? user?.id ?? user?.userId ?? user ?? "");
 
 const mapReview = (review) => ({
   id: String(review._id),
+  _id: String(review._id),
+  product: String(review.product?._id ?? review.product ?? ""),
+  userId: getUserId(review.user),
   author: review.user?.name || "익명",
   date: new Date(review.createdAt).toLocaleDateString("ko-KR").replace(/ /g, ""),
+  createdAt: review.createdAt,
+  content: review.content || "",
   body: review.content || "",
   rating: Number(review.rating) || 0,
   images: Array.isArray(review.images)
-    ? review.images.map((image) => normalizeImageUrl(image))
+    ? review.images.map((image) => normalizeImageUrl(image)).filter(Boolean)
     : [],
   helpfulCount: 0,
+  isMine: Boolean(review.isMine),
 });
 
-function getProductDetailByIdFromJson(id) {
-  const product = productList.find((item) => String(item.id) === String(id));
-
-  if (!product) {
-    return null;
-  }
-
-  const price = parsePrice(product.price);
-  const tags = Array.isArray(product.tag) ? product.tag : [];
-  const heroImage = normalizeImageUrl(product.image) || ProductHeroImage;
-  const normalizedDetailImages = Array.isArray(product.detailImages)
-    ? product.detailImages.map((src) => normalizeImageUrl(src)).filter(Boolean)
-    : [];
-  const gallery =
-    normalizedDetailImages.length > 0
-      ? normalizedDetailImages
-      : [heroImage, heroImage, heroImage, heroImage, heroImage];
-  const options =
-    Array.isArray(product.priceOptions) && product.priceOptions.length > 0
-      ? product.priceOptions.map((option, index) => ({
-          id: `option-${index + 1}`,
-          label: option.optionName || `옵션 ${index + 1}`,
-          price: parsePrice(option.price) || price,
-        }))
-      : [{ id: "default", label: "기본 옵션", price }];
+const buildReviewSummary = (mappedReviews) => {
+  const gallery = mappedReviews.flatMap((review) => review.images || []);
+  const reviewCount = mappedReviews.length;
+  const photoCount = gallery.length;
+  const rating =
+    reviewCount > 0
+      ? mappedReviews.reduce((sum, review) => sum + review.rating, 0) / reviewCount
+      : 0;
 
   return {
-    id: String(product.id),
-    brand: tags[0] || String(product.name ?? "").split(" ")[0] || "브랜드 정보 준비중",
-    title: product.name,
-    subtitle: `${tags[1] || tags[0] || "상품"} 카테고리 추천 상품`,
-    shortDescription: `${product.name}의 핵심 정보와 옵션을 상세 페이지에서 확인할 수 있습니다.`,
-    price,
-    rating: Number(product.rating) || 0,
-    heroImage,
+    rating,
+    reviewCount,
+    photoCount,
     gallery,
-    options,
   };
-}
+};
 
 function getProductDetailFromApi(product) {
   const price = parsePrice(product.price);
@@ -106,8 +82,9 @@ function getProductDetailFromApi(product) {
   const tags = Array.isArray(product.tag) ? product.tag : [];
 
   return {
-    id: String(product._id ?? product.id),
-    _id: product._id ? String(product._id) : "",
+    _id: String(product._id),
+    productId: String(product._id),
+    legacyId: product.id ? String(product.id) : "",
     brand: tags[0] || String(product.name ?? "").split(" ")[0] || "브랜드 정보 준비중",
     title: product.name,
     subtitle: `${tags[1] || tags[0] || "상품"} 카테고리 추천 상품`,
@@ -126,6 +103,8 @@ function ProductDetail() {
   const dispatch = useDispatch();
   const { showToast } = useToast();
   const cartItems = useSelector((state) => state.cart.items);
+  const authChecked = useSelector((state) => state.user.authChecked);
+  const isLoggedIn = useSelector((state) => state.user.isLoggedIn);
 
   const tabsRef = useRef(null);
   const overviewRef = useRef(null);
@@ -138,49 +117,46 @@ function ProductDetail() {
   const [activeTab, setActiveTab] = useState("overview");
   const [isOverviewExpanded, setIsOverviewExpanded] = useState(false);
   const [reviews, setReviews] = useState([]);
-  const [reviewSummary, setReviewSummary] = useState({
-    rating: 0,
-    reviewCount: 0,
-    photoCount: 0,
-    gallery: [],
-  });
+  const [editingReview, setEditingReview] = useState(null);
+  const [ownedReviewId, setOwnedReviewId] = useState("");
+  const reviewSummary = useMemo(() => buildReviewSummary(reviews), [reviews]);
 
   useEffect(() => {
+    if (!authChecked) {
+      return undefined;
+    }
+
     const controller = new AbortController();
 
     const fetchProduct = async () => {
       try {
         setStatus("loading");
 
-        const productResponse = await api.get(`/products/${id}`, {
-          signal: controller.signal,
-        });
-
         const nextProduct = getProductDetailFromApi(
-          productResponse.data.data ?? productResponse.data,
+          await fetchProductById(id, { signal: controller.signal }),
         );
         setProduct(nextProduct);
 
-        const reviewResponse = await api.get(`/reviews/${nextProduct.id}`, {
+        const reviewResponse = await api.get(`/reviews/${nextProduct._id}`, {
           signal: controller.signal,
         });
 
         const mappedReviews = reviewResponse.data.map(mapReview);
-        const gallery = mappedReviews.flatMap((review) => review.images || []);
-        const reviewCount = mappedReviews.length;
-        const photoCount = gallery.length;
-        const rating =
-          reviewCount > 0
-            ? mappedReviews.reduce((sum, review) => sum + review.rating, 0) / reviewCount
-            : 0;
 
         setReviews(mappedReviews);
-        setReviewSummary({
-          rating,
-          reviewCount,
-          photoCount,
-          gallery,
-        });
+
+        if (isLoggedIn) {
+          try {
+            const myReviewResponse = await api.get(`/reviews/${nextProduct._id}/me`, {
+              signal: controller.signal,
+            });
+            setOwnedReviewId(myReviewResponse.data?._id ? String(myReviewResponse.data._id) : "");
+          } catch {
+            setOwnedReviewId("");
+          }
+        } else {
+          setOwnedReviewId("");
+        }
 
         setStatus("success");
       } catch (error) {
@@ -188,23 +164,18 @@ function ProductDetail() {
           return;
         }
 
-        const fallbackProduct = getProductDetailByIdFromJson(id);
-        setProduct(fallbackProduct);
+        setProduct(null);
         setReviews([]);
-        setReviewSummary({
-          rating: 0,
-          reviewCount: 0,
-          photoCount: 0,
-          gallery: [],
-        });
-        setStatus(fallbackProduct ? "success" : "error");
+        setEditingReview(null);
+        setOwnedReviewId("");
+        setStatus("error");
       }
     };
 
     fetchProduct();
 
     return () => controller.abort();
-  }, [id]);
+  }, [authChecked, id, isLoggedIn]);
 
   useEffect(() => {
     if (!product) {
@@ -224,8 +195,9 @@ function ProductDetail() {
 
     dispatch(
       addRecentViewed({
-        id: product.id,
-        productId: product.id,
+        _id: product._id,
+        id: product._id,
+        productId: product._id,
         name: product.title,
         price: formatPrice(product.price),
         image: product.heroImage,
@@ -264,14 +236,14 @@ function ProductDetail() {
     };
   }, [product]);
 
+  useEffect(() => {
+    if (product?.name) {
+      trackViewProduct(product.name);
+    }
+  }, [product]);
+
   if (status === "loading") {
-    return (
-      <main className="product-detail">
-        <section className="product-detail__story">
-          <h1 className="product-detail__title">상품을 불러오는 중입니다.</h1>
-        </section>
-      </main>
-    );
+    return <RouteLoading message="상품을 불러오는 중입니다..." />;
   }
 
   if (!product) {
@@ -279,9 +251,7 @@ function ProductDetail() {
       <main className="product-detail">
         <section className="product-detail__story">
           <h1 className="product-detail__title">상품을 찾을 수 없습니다.</h1>
-          <p className="product-detail__feature-body">
-            요청한 상품 id에 해당하는 목록 데이터가 없습니다.
-          </p>
+          <p className="product-detail__feature-body">요청한 상품 정보를 불러오지 못했습니다.</p>
         </section>
       </main>
     );
@@ -291,31 +261,66 @@ function ProductDetail() {
   const displayOption = selectedOption || product.options[0];
   const totalPrice = displayOption.price * quantity;
   const categoryLabel = product.subtitle.split(" 카테고리")[0] || "상품";
+  const checkoutItem = {
+    id: `${product._id}-${displayOption.id}`,
+    _id: product._id,
+    productId: product._id,
+    category: categoryLabel,
+    name: product.title,
+    option: displayOption.label,
+    price: displayOption.price,
+    image: product.heroImage,
+    quantity,
+  };
 
   const handleAddToCart = (shouldShowToast = true) => {
-    const cartItemId = `${product.id}-${displayOption.id}`;
-    const isAlreadyInCart = cartItems.some((item) => item.id === cartItemId);
+    const isAlreadyInCart = cartItems.some((item) => item.id === checkoutItem.id);
 
-    dispatch(
-      addToCart({
-        id: cartItemId,
-        productId: product._id ?? product.id,
-        name: product.title,
-        option: displayOption.label,
-        price: displayOption.price,
-        image: product.heroImage,
-        quantity,
-      }),
-    );
+    dispatch(addToCart(checkoutItem));
 
     if (shouldShowToast) {
       showToast(isAlreadyInCart ? "장바구니 수량이 추가되었습니다." : "장바구니에 담았습니다.");
     }
   };
 
+  const handleReviewSaved = (savedReview) => {
+    const mappedReview = { ...mapReview(savedReview), isMine: true };
+
+    setReviews((prevReviews) => {
+      const hasReview = prevReviews.some((review) => review.id === mappedReview.id);
+      return hasReview
+        ? prevReviews.map((review) => (review.id === mappedReview.id ? mappedReview : review))
+        : [mappedReview, ...prevReviews];
+    });
+    setOwnedReviewId(mappedReview.id);
+    setEditingReview(null);
+  };
+
+  const handleDeleteReview = async (review) => {
+    if (!window.confirm("작성한 리뷰를 삭제하시겠습니까?")) {
+      return;
+    }
+
+    try {
+      await api.delete(`/reviews/${review.id}`);
+
+      setReviews((prevReviews) => prevReviews.filter((item) => item.id !== review.id));
+      if (String(ownedReviewId) === String(review.id)) {
+        setOwnedReviewId("");
+      }
+      showToast("리뷰가 삭제되었습니다.");
+    } catch (error) {
+      showToast(error.response?.data?.message || "리뷰 삭제에 실패했습니다.");
+    }
+  };
+
   const handleBuyNow = () => {
-    handleAddToCart(false);
-    navigate("/payment");
+    navigate("/payment", {
+      state: {
+        orderItems: [checkoutItem],
+        checkoutSource: "direct-buy",
+      },
+    });
   };
 
   const handleQuantityChange = (delta) => {
@@ -373,7 +378,7 @@ function ProductDetail() {
           watchOverflow
         >
           {reviewSummary.gallery.map((image, index) => (
-            <SwiperSlide key={`${product.id}-review-photo-${index}`}>
+            <SwiperSlide key={`${product._id}-review-photo-${index}`}>
               <img
                 src={image}
                 alt={`리뷰 이미지 ${index + 1}`}
@@ -409,7 +414,8 @@ function ProductDetail() {
 
             <WishlistIconButton
               product={{
-                id: product.id,
+                _id: product._id,
+                productId: product._id,
                 name: product.title,
                 price: product.price,
                 image: product.heroImage,
@@ -503,7 +509,7 @@ function ProductDetail() {
               <div className="product-detail__story-image">
                 {product.gallery.map((image, index) => (
                   <img
-                    key={`${product.id}-detail-${index}`}
+                    key={`${product._id}-detail-${index}`}
                     src={image}
                     alt={`${product.brand} 상세 이미지 ${index + 1}`}
                     onError={(event) => {
@@ -541,8 +547,19 @@ function ProductDetail() {
           photoCount={reviewSummary.photoCount}
           gallery={reviewSummary.gallery}
           reviews={reviews}
+          onEditReview={setEditingReview}
+          onDeleteReview={handleDeleteReview}
         />
       </section>
+
+      {editingReview && (
+        <ReviewWrite
+          productId={product._id}
+          initialReview={editingReview}
+          onClose={() => setEditingReview(null)}
+          onSaved={handleReviewSaved}
+        />
+      )}
     </main>
   );
 }

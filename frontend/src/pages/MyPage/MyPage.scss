@@ -1,5 +1,5 @@
-@import "styles/variables";
-@import "styles/mixins";
+@use "styles/variables" as *;
+@use "styles/mixins" as *;
 
 .my-page {
   width: 100%;
@@ -13,7 +13,9 @@
   --my-page-email-size: 12px;
   --my-page-logout-height: 32px;
   --my-page-logout-padding-x: 12px;
-  --my-page-logout-font-size: 13px;
+  --my-page-button-radius: #{$radius-btn};
+  --my-page-button-font-size: #{$font-sm};
+  --my-page-logout-font-size: var(--my-page-button-font-size);
   --my-page-metrics-min-height: 78px;
   --my-page-metric-gap: 8px;
   --my-page-metric-padding: 14px 8px;
@@ -21,7 +23,7 @@
   --my-page-metric-icon-size: 38px;
   --my-page-metric-image-size: 28px;
   --my-page-section-gap: 36px;
-  --my-page-section-title-size: 17px;
+  --my-page-section-title-size: 20px;
   --my-page-info-panel-padding: 24px 16px 28px;
   --my-page-info-item-gap: 18px;
   --my-page-info-label-size: 14px;
@@ -33,8 +35,8 @@
   --my-page-input-font-size: 14px;
   --my-page-action-width: 72px;
   --my-page-action-height: 40px;
-  --my-page-action-radius: 12px;
-  --my-page-action-font-size: 13px;
+  --my-page-action-radius: var(--my-page-button-radius);
+  --my-page-action-font-size: var(--my-page-button-font-size);
   --my-page-ai-slider-column-width: 192px;
   --my-page-recent-card-width: 176px;
   --my-page-recent-card-height: 194px;
@@ -61,7 +63,7 @@
 .my-page__recent-panel,
 .my-page__history-panel {
   background: $color-white;
-  border: 1px solid rgba($color-text-main, 0.1);
+  // border: 1px solid rgba($color-text-main, 0.1);
   border-radius: var(--my-page-card-radius);
 }
 
@@ -74,7 +76,7 @@
 .my-page__profile-main,
 .my-page__metrics {
   background: $color-white;
-  border: 1px solid rgba($color-text-main, 0.1);
+  // border: 1px solid rgba($color-text-main, 0.1);
   border-radius: var(--my-page-card-radius);
 }
 
@@ -128,7 +130,7 @@
   height: var(--my-page-logout-height);
   padding: 0 var(--my-page-logout-padding-x);
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--my-page-button-radius);
   background: $color-text-sub;
   color: $color-white;
   font-size: var(--my-page-logout-font-size);
@@ -224,7 +226,7 @@
 .my-page__section-title {
   margin: 0 0 14px;
   font-size: var(--my-page-section-title-size);
-  font-weight: $font-black;
+  font-weight: $font-bold;
   line-height: 1.25;
 }
 
@@ -255,9 +257,13 @@
   padding: 0 var(--my-page-input-padding-x);
   border: 1px solid rgba($color-text-main, 0.22);
   border-radius: var(--my-page-input-radius);
-  background: rgba($color-bg, 0.9);
+  background: $color-gray-100;
   display: flex;
   align-items: center;
+
+  &--editing {
+    background: $color-white;
+  }
 
   span {
     @include ellipsis;
@@ -296,14 +302,14 @@
 
 .my-page__edit-button--edit {
   border: 0;
-  background: #12b8c0;
+  background: $color-text-sub;
   color: $color-white;
 }
 
 .my-page__edit-button--done {
-  border: 2px solid #12b8c0;
+  border: 1px solid $color-text-sub;
   background: $color-white;
-  color: #12b8c0;
+  color: $color-text-sub;
 }
 
 .my-page__recent-panel {
@@ -320,6 +326,7 @@
 }
 
 .my-page__rail {
+  width: 100%;
   padding-bottom: 0;
   overflow: visible;
 
@@ -328,7 +335,7 @@
   }
 }
 
-.my-page__rail-slide {
+.my-page__rail .my-page__rail-slide {
   width: var(--my-page-recent-card-width);
   height: auto;
 }
@@ -381,6 +388,7 @@
 .my-page__rail-card-actions {
   flex: 0 0 auto;
   gap: 4px;
+  justify-self: end;
 }
 
 .my-page__rail-card-copy {
@@ -400,10 +408,11 @@
 }
 
 .my-page__rail-card-footer {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  column-gap: 10px;
+  width: 100%;
 }
 
 .my-page__rail-card-price {
@@ -438,7 +447,7 @@
 
 .my-page__history-group {
   display: grid;
-  gap: 10px;
+  gap: 35px;
 }
 
 .my-page__history-date-row {
@@ -449,7 +458,7 @@
 .my-page__history-date {
   margin: 0;
   flex-shrink: 0;
-  color: rgba($color-text-main, 0.48);
+  color: $color-sub-category-text;
   font-size: 12px;
   font-weight: $font-semibold;
   line-height: 1.2;
@@ -457,8 +466,8 @@
 
 .my-page__history-line {
   width: 100%;
-  height: 1px;
-  background: rgba($color-text-main, 0.12);
+  height: 2px;
+  background: $color-gray-300;
 }
 
 .my-page__history-panel {
@@ -494,14 +503,14 @@
 
 .my-page__history-title {
   margin: 0;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: $font-black;
   line-height: 1.25;
 }
 
 .my-page__history-subtitle {
   margin: 4px 0 0;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: $font-semibold;
   line-height: 1.35;
 }
@@ -514,14 +523,23 @@
 }
 
 .my-page__ai-grid--slider {
-  grid-auto-flow: column;
-  grid-auto-columns: var(--my-page-ai-slider-column-width);
-  grid-template-columns: none;
-  overflow-x: auto;
-  scrollbar-width: none;
+  display: block;
+  width: 100%;
+  overflow: hidden;
 
-  &::-webkit-scrollbar {
-    display: none;
+  .swiper-wrapper {
+    align-items: stretch;
+  }
+}
+
+.my-page__ai-grid--slider .my-page__ai-slide {
+  width: var(--my-page-ai-slider-column-width);
+  height: auto;
+  display: flex;
+
+  .my-page__ai-card {
+    width: 100%;
+    height: 100%;
   }
 }
 
@@ -579,10 +597,12 @@
 
 .my-page__ai-card-name {
   @include ellipsis-multi(2);
+  white-space: nowrap;
+  width: 100%;
   margin: 0;
   min-height: 32px;
-  font-size: 12px;
-  font-weight: $font-black;
+  font-size: 16px;
+  font-weight: $font-bold;
   line-height: 1.35;
 }
 
@@ -590,9 +610,9 @@
   @include ellipsis-multi(2);
   margin: 0;
   min-height: calc(2 * 1.45em);
-  color: rgba($color-text-main, 0.78);
-  font-size: 9px;
-  font-weight: $font-semibold;
+  color: $color-text-main;
+  font-size: 12px;
+  font-weight: $font-medium;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -706,7 +726,8 @@
 
 @include desktop-up {
   .my-page {
-    padding-top: $page-content-start-tablet;
+    background-color: $color-gray-100;
+    padding-top: $page-content-start-desktop;
     padding-bottom: 172px;
   }
 
@@ -726,9 +747,9 @@
   }
 
   .my-page__profile-card {
-    margin-top: 56px;
+    margin-top: 120px;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 340px;
+    grid-template-columns: 1fr 1fr;
     gap: 12px;
   }
 
@@ -736,6 +757,20 @@
   .my-page__metrics {
     min-height: 78px;
     border-radius: 16px;
+  }
+
+  .my-page__profile-main {
+    @include desktop-up {
+      .my-page__profile-copy {
+        text-indent: 10%;
+        .my-page__nickname {
+          font-size: $font-xl-2;
+        }
+        .my-page__email {
+          font-size: $font-md;
+        }
+      }
+    }
   }
 
   .my-page__profile-top {
@@ -800,17 +835,17 @@
   }
 
   .my-page__overview-grid .my-page__section {
-    margin-top: 68px;
+    margin-top: 120px;
     display: flex;
     flex-direction: column;
   }
 
   .my-page__section {
-    margin-top: 68px;
+    margin-top: 120px;
   }
 
   .my-page__section-title {
-    margin-bottom: 16px;
+    margin-bottom: 20px;
   }
 
   .my-page__info-panel {
@@ -880,7 +915,7 @@
   }
 
   .my-page__history-list {
-    gap: 18px;
+    gap: 30px;
   }
 
   .my-page__history-date-row {
@@ -1026,5 +1061,11 @@
 
   .my-page__more-wrap {
     margin-top: 40px;
+  }
+}
+
+.my-page-layout {
+  @include desktop-up {
+    background-color: $color-gray-100;
   }
 }

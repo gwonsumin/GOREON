@@ -1,14 +1,35 @@
-﻿import "./ProductCardVertical.scss";
+import "./ProductCardVertical.scss";
 import { useNavigate } from "react-router-dom";
-import Rating from "@/components/Rating/Rating";
 
-function ProductCardVertical({ product, action }) {
+import Rating from "@/components/Rating/Rating";
+import ProductHeroImage from "@/assets/img/intel-core-ultra5-250kf-plus-product-image-genuine.jpg";
+import { normalizeImageUrl } from "@/utils/image";
+import { buildProductDetailPath } from "@/utils/productIdentity";
+
+function ProductCardVertical({ product, action, onProductClick }) {
   const navigate = useNavigate();
-  const productId = product?._id ?? product?.productId ?? product?.id;
+  const detailPath = buildProductDetailPath(product);
+  const imageSrc = normalizeImageUrl(product.image) || ProductHeroImage;
 
   return (
-    <div className="product-card-vertical" onClick={() => navigate(`/product/${productId}`)}>
-      <img className="product-card-vertical__thumbnail" src={product.image} alt="노트북" />
+    <div
+      className="product-card-vertical"
+      onClick={() => {
+        if (detailPath) {
+          onProductClick?.(product);
+          navigate(detailPath);
+        }
+      }}
+    >
+      <img
+        className="product-card-vertical__thumbnail"
+        src={imageSrc}
+        alt={product.name}
+        onError={(event) => {
+          event.currentTarget.onerror = null;
+          event.currentTarget.src = ProductHeroImage;
+        }}
+      />
       <div className="product-card-vertical__title">{product.name}</div>
       <div className="product-card-vertical__rating">
         <Rating rating={product.rating} />

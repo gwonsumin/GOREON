@@ -2,8 +2,27 @@ import "./AddressModal.scss";
 
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { lockPageScroll } from "@/utils/scrollLock";
 
-const POSTCODE_MIN_HEIGHT = 460;
+const DESKTOP_POSTCODE_MIN_HEIGHT = 460;
+const MOBILE_POSTCODE_MIN_HEIGHT = 320;
+const MOBILE_MAX_POSTCODE_MIN_HEIGHT = 420;
+const MOBILE_BREAKPOINT = 767;
+
+function getPostcodeMinHeight() {
+  if (typeof window === "undefined") {
+    return DESKTOP_POSTCODE_MIN_HEIGHT;
+  }
+
+  if (window.innerWidth <= MOBILE_BREAKPOINT) {
+    return Math.max(
+      MOBILE_POSTCODE_MIN_HEIGHT,
+      Math.min(MOBILE_MAX_POSTCODE_MIN_HEIGHT, window.innerHeight - 140),
+    );
+  }
+
+  return DESKTOP_POSTCODE_MIN_HEIGHT;
+}
 
 function AddressModal({ isOpen, onClose, onSelectAddress }) {
   const containerRef = useRef(null);
@@ -16,7 +35,7 @@ function AddressModal({ isOpen, onClose, onSelectAddress }) {
     }
 
     previousFocusRef.current = document.activeElement;
-    document.body.style.overflow = "hidden";
+    const releaseScrollLock = lockPageScroll();
     closeButtonRef.current?.focus();
 
     const handleKeyDown = (event) => {
@@ -28,7 +47,7 @@ function AddressModal({ isOpen, onClose, onSelectAddress }) {
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      document.body.style.overflow = "";
+      releaseScrollLock();
       window.removeEventListener("keydown", handleKeyDown);
 
       if (previousFocusRef.current instanceof HTMLElement) {
@@ -44,6 +63,7 @@ function AddressModal({ isOpen, onClose, onSelectAddress }) {
 
     const containerElement = containerRef.current;
     let frameId = 0;
+    const postcodeMinHeight = getPostcodeMinHeight();
 
     const Postcode = window.kakao?.Postcode ?? window.daum?.Postcode;
 
@@ -53,8 +73,8 @@ function AddressModal({ isOpen, onClose, onSelectAddress }) {
     }
 
     containerElement.innerHTML = "";
-    containerElement.style.minHeight = `${POSTCODE_MIN_HEIGHT}px`;
-    containerElement.style.height = `${POSTCODE_MIN_HEIGHT}px`;
+    containerElement.style.minHeight = `${postcodeMinHeight}px`;
+    containerElement.style.height = `${postcodeMinHeight}px`;
 
     frameId = window.requestAnimationFrame(() => {
       const postcode = new Postcode({
@@ -62,7 +82,7 @@ function AddressModal({ isOpen, onClose, onSelectAddress }) {
           onSelectAddress(data);
         },
         onresize: (size) => {
-          const nextHeight = Math.max(size.height, POSTCODE_MIN_HEIGHT);
+          const nextHeight = Math.max(size.height, postcodeMinHeight);
           containerElement.style.height = `${nextHeight}px`;
         },
         width: "100%",
@@ -85,7 +105,11 @@ function AddressModal({ isOpen, onClose, onSelectAddress }) {
   }
 
   return createPortal(
-    <div className="address-modal" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <div
+      className="address-modal"
+      role="presentation"
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
       <div
         className="address-modal__dialog"
         role="dialog"
