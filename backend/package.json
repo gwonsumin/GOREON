@@ -8,6 +8,7 @@
     "start": "node src/server.js",
     "seed:products": "node scripts/seedProducts.js",
     "seed:reviews": "node scripts/seedReviews.js",
+    "seed:test-user": "node scripts/seedTestUser.js",
     "sync:product-ratings": "node scripts/syncProductRatings.js"
   },
   "dependencies": {
