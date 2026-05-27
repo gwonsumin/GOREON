@@ -1,29 +1,34 @@
-﻿import React, { useEffect } from "react";
-import { useDispatch } from "react-redux";
-import { Route, Routes } from "react-router-dom";
+import React, { lazy, useEffect } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { Route, Routes, useLocation } from "react-router-dom";
 
-import MainLayout from "./layouts/MainLayout/MainLayout";
-import Main from "./pages/Main/Main";
-import Search from "./pages/Search/Search";
-import Login from "./pages/Login/Login";
-import Cart from "./pages/Cart/Cart";
-import Wishlist from "./pages/Wishlist/Wishlist";
-import ProductDetail from "./pages/ProductDetail/ProductDetail";
-import Payment from "./pages/Payment/Payment";
-import MyPage from "./pages/MyPage/MyPage";
-import Category from "./pages/Category/Category";
-import PcAssembly from "./pages/PcAssembly/PcAssembly";
-import PcAssemblyQuote from "./pages/PcAssemblyQuote/PcAssemblyQuote";
-import Register from "./pages/Register/Register";
-import List from "./pages/List/List";
-import OrderHistory from "./pages/OrderHistory/OrderHistory";
-import SocialLoginCallback from "./pages/SocialLoginCallback/SocialLoginCallback";
-import ScrollToTop from "./components/ScrollToTop/ScrollToTop";
 import ProtectedRoute from "./components/ProtectedRoute/ProtectedRoute";
-import { logout } from "./store/slices/userSlice";
+import ScrollToTop from "./components/ScrollToTop/ScrollToTop";
+import MainLayout from "./layouts/MainLayout/MainLayout";
+import { completeAuthCheck, login, logout } from "./store/slices/userSlice";
+import api from "./utils/api";
+import { trackPageView } from "@/utils/analytics";
+
+const Main = lazy(() => import("./pages/Main/Main"));
+const Search = lazy(() => import("./pages/Search/Search"));
+const Login = lazy(() => import("./pages/Login/Login"));
+const Cart = lazy(() => import("./pages/Cart/Cart"));
+const Wishlist = lazy(() => import("./pages/Wishlist/Wishlist"));
+const ProductDetail = lazy(() => import("./pages/ProductDetail/ProductDetail"));
+const Payment = lazy(() => import("./pages/Payment/Payment"));
+const MyPage = lazy(() => import("./pages/MyPage/MyPage"));
+const Category = lazy(() => import("./pages/Category/Category"));
+const PcAssembly = lazy(() => import("./pages/PcAssembly/PcAssembly"));
+const PcAssemblyQuote = lazy(() => import("./pages/PcAssemblyQuote/PcAssemblyQuote"));
+const Register = lazy(() => import("./pages/Register/Register"));
+const List = lazy(() => import("./pages/List/List"));
+const OrderHistory = lazy(() => import("./pages/OrderHistory/OrderHistory"));
+const SocialLoginCallback = lazy(() => import("./pages/SocialLoginCallback/SocialLoginCallback"));
 
 function App() {
   const dispatch = useDispatch();
+  const authChecked = useSelector((state) => state.user.authChecked);
+  const location = useLocation();
 
   useEffect(() => {
     const handleAuthLogout = () => {
@@ -33,6 +38,57 @@ function App() {
     window.addEventListener("auth:logout", handleAuthLogout);
     return () => window.removeEventListener("auth:logout", handleAuthLogout);
   }, [dispatch]);
+
+  useEffect(() => {
+    if (authChecked || location.pathname === "/auth/social/callback") {
+      return;
+    }
+
+    let isMounted = true;
+    const controller = new AbortController();
+
+    const restoreSession = async () => {
+      try {
+        const response = await api.get("/users/me", {
+          signal: controller.signal,
+          skipAuthRefresh: true,
+          skipAuthLogout: true,
+        });
+
+        if (!isMounted) {
+          return;
+        }
+
+        dispatch(login({ user: response.data?.data || response.data }));
+      } catch (error) {
+        if (error.name === "CanceledError" || error.name === "AbortError") {
+          return;
+        }
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (error.response?.status === 401) {
+          dispatch(logout());
+          return;
+        }
+
+        dispatch(completeAuthCheck());
+      }
+    };
+
+    restoreSession();
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, [authChecked, dispatch, location.pathname]);
+
+  useEffect(() => {
+    trackPageView(location.pathname);
+  }, [location]);
 
   return (
     <>

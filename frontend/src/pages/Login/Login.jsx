@@ -10,7 +10,8 @@ import { useDispatch } from "react-redux";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { login } from "../../store/slices/userSlice";
-import api from "../../utils/api";
+import api, { ACCESS_TOKEN_STORAGE_KEY } from "../../utils/api";
+import { formatPhoneNumber } from "../../utils/phoneNumber";
 
 const defaultLoginForm = {
   email: "",
@@ -26,12 +27,16 @@ const defaultRegisterForm = {
 };
 
 const persistAuth = (payload) => {
-  localStorage.removeItem("authToken");
   localStorage.setItem("userInfo", JSON.stringify(payload.user));
+
+  if (payload.accessToken) {
+    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, payload.accessToken);
+  }
 };
 
 const normalizeAuthPayload = (auth) => ({
   user: auth.user,
+  accessToken: auth.accessToken,
 });
 
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
@@ -56,6 +61,50 @@ const getAuthErrorMessage = (error, fallbackMessage) => {
   };
 
   return messageMap[serverMessage] || serverMessage;
+};
+
+const getSocialAuthErrorMessage = (providerLabel, authError) => {
+  if (authError === "social_session_missing") {
+    return `${providerLabel} 로그인은 완료됐지만 세션을 확인하지 못했습니다. 브라우저 쿠키 설정을 확인 후 다시 시도해주세요.`;
+  }
+
+  if (authError === "social_profile_fetch_failed") {
+    return `${providerLabel} 로그인 후 사용자 정보를 가져오지 못했습니다. 다시 시도해주세요.`;
+  }
+
+  if (authError === "social_login_failed") {
+    return `${providerLabel} 로그인 처리 중 서버 오류가 발생했습니다. 백엔드 로그를 확인해주세요.`;
+  }
+
+  if (authError === "Authorization code is required") {
+    return `${providerLabel} 로그인 승인 코드가 전달되지 않았습니다. 다시 시도해주세요.`;
+  }
+
+  if (authError?.includes("social login is not configured")) {
+    return `${providerLabel} 소셜 로그인 설정이 완료되지 않았습니다. 서버 환경변수를 확인해주세요.`;
+  }
+
+  if (authError?.includes("Failed to exchange")) {
+    return `${providerLabel} 인증 토큰 교환에 실패했습니다. 소셜 앱 설정의 Redirect URI를 확인해주세요.`;
+  }
+
+  if (authError?.includes("Failed to fetch")) {
+    return `${providerLabel} 사용자 프로필 조회에 실패했습니다. 소셜 제공자 동의 항목과 앱 권한을 확인해주세요.`;
+  }
+
+  if (authError === "Invalid social login payload") {
+    return `${providerLabel}에서 필수 사용자 정보를 받지 못했습니다. 동의 항목과 계정 정보를 확인해주세요.`;
+  }
+
+  if (authError === "Kakao email consent is required") {
+    return "카카오 이메일 제공 동의가 필요합니다. 카카오 로그인 동의항목에서 이메일 제공에 동의해주세요.";
+  }
+
+  if (authError) {
+    return `${providerLabel} 로그인에 실패했습니다. 사유: ${authError}`;
+  }
+
+  return `${providerLabel} 로그인에 실패했습니다. 다시 시도해주세요.`;
 };
 
 const validateLoginForm = (form) => {
@@ -108,6 +157,13 @@ const validateRegisterForm = (form) => {
   }
 
   return "";
+};
+
+const updateRegisterFormField = (setRegisterForm, fieldName) => (event) => {
+  const nextValue =
+    fieldName === "phone" ? formatPhoneNumber(event.target.value) : event.target.value;
+
+  setRegisterForm((prev) => ({ ...prev, [fieldName]: nextValue }));
 };
 
 const useAuthActions = () => {
@@ -212,7 +268,14 @@ const SocialLoginButtons = ({ onSocialLogin = startSocialLogin }) => (
   </div>
 );
 
-const MobileLogin = ({ onShowRegister, loginForm, setLoginForm, onSubmit, error, onSocialLogin }) => {
+const MobileLogin = ({
+  onShowRegister,
+  loginForm,
+  setLoginForm,
+  onSubmit,
+  error,
+  onSocialLogin,
+}) => {
   return (
     <>
       <section className="mobile-login">
@@ -267,7 +330,14 @@ const MobileLogin = ({ onShowRegister, loginForm, setLoginForm, onSubmit, error,
     </>
   );
 };
-const MobileRegister = ({ onShowLogin, registerForm, setRegisterForm, onSubmit, error, onSocialLogin }) => {
+const MobileRegister = ({
+  onShowLogin,
+  registerForm,
+  setRegisterForm,
+  onSubmit,
+  error,
+  onSocialLogin,
+}) => {
   return (
     <>
       <section className="mobile-register">
@@ -281,9 +351,8 @@ const MobileRegister = ({ onShowLogin, registerForm, setRegisterForm, onSubmit, 
                 placeholder="이메일을 입력해주세요"
                 name="email"
                 value={registerForm.email}
-                onChange={(event) =>
-                  setRegisterForm((prev) => ({ ...prev, email: event.target.value }))
-                }
+                onChange={updateRegisterFormField(setRegisterForm, "email")}
+                autoComplete="email"
               />
             </div>
             <div className="inputBox">
@@ -293,9 +362,8 @@ const MobileRegister = ({ onShowLogin, registerForm, setRegisterForm, onSubmit, 
                 placeholder="비밀번호를 입력하세요"
                 name="password"
                 value={registerForm.password}
-                onChange={(event) =>
-                  setRegisterForm((prev) => ({ ...prev, password: event.target.value }))
-                }
+                onChange={updateRegisterFormField(setRegisterForm, "password")}
+                autoComplete="new-password"
               />
             </div>
             <div className="inputBox">
@@ -305,9 +373,8 @@ const MobileRegister = ({ onShowLogin, registerForm, setRegisterForm, onSubmit, 
                 placeholder="비밀번호를 다시 입력하세요"
                 name="passwordCheck"
                 value={registerForm.passwordCheck}
-                onChange={(event) =>
-                  setRegisterForm((prev) => ({ ...prev, passwordCheck: event.target.value }))
-                }
+                onChange={updateRegisterFormField(setRegisterForm, "passwordCheck")}
+                autoComplete="new-password"
               />
             </div>
             <div className="inputBox">
@@ -317,21 +384,21 @@ const MobileRegister = ({ onShowLogin, registerForm, setRegisterForm, onSubmit, 
                 placeholder="닉네임을 입력하세요"
                 name="nickname"
                 value={registerForm.nickname}
-                onChange={(event) =>
-                  setRegisterForm((prev) => ({ ...prev, nickname: event.target.value }))
-                }
+                onChange={updateRegisterFormField(setRegisterForm, "nickname")}
+                autoComplete="nickname"
               />
             </div>
             <div className="inputBox">
               <img src={lock} alt="icon" />
               <input
-                type="text"
+                type="tel"
                 placeholder="전화번호를 입력하세요"
                 name="phone"
                 value={registerForm.phone}
-                onChange={(event) =>
-                  setRegisterForm((prev) => ({ ...prev, phone: event.target.value }))
-                }
+                onChange={updateRegisterFormField(setRegisterForm, "phone")}
+                inputMode="numeric"
+                autoComplete="tel"
+                maxLength={13}
               />
             </div>
           </div>
@@ -390,9 +457,8 @@ const PcLogin = ({ initialMode = "login" }) => {
                   placeholder="이메일을 입력해주세요"
                   name="email"
                   value={registerForm.email}
-                  onChange={(event) =>
-                    setRegisterForm((prev) => ({ ...prev, email: event.target.value }))
-                  }
+                  onChange={updateRegisterFormField(setRegisterForm, "email")}
+                  autoComplete="email"
                 />
               </div>
               <div className="inputBox">
@@ -402,9 +468,8 @@ const PcLogin = ({ initialMode = "login" }) => {
                   placeholder="비밀번호를 입력하세요"
                   name="password"
                   value={registerForm.password}
-                  onChange={(event) =>
-                    setRegisterForm((prev) => ({ ...prev, password: event.target.value }))
-                  }
+                  onChange={updateRegisterFormField(setRegisterForm, "password")}
+                  autoComplete="new-password"
                 />
               </div>
               <div className="inputBox">
@@ -414,12 +479,8 @@ const PcLogin = ({ initialMode = "login" }) => {
                   placeholder="비밀번호를 다시 입력하세요"
                   name="passwordCheck"
                   value={registerForm.passwordCheck}
-                  onChange={(event) =>
-                    setRegisterForm((prev) => ({
-                      ...prev,
-                      passwordCheck: event.target.value,
-                    }))
-                  }
+                  onChange={updateRegisterFormField(setRegisterForm, "passwordCheck")}
+                  autoComplete="new-password"
                 />
               </div>
               <div className="inputBox">
@@ -429,21 +490,21 @@ const PcLogin = ({ initialMode = "login" }) => {
                   placeholder="닉네임을 입력하세요"
                   name="nickname"
                   value={registerForm.nickname}
-                  onChange={(event) =>
-                    setRegisterForm((prev) => ({ ...prev, nickname: event.target.value }))
-                  }
+                  onChange={updateRegisterFormField(setRegisterForm, "nickname")}
+                  autoComplete="nickname"
                 />
               </div>
               <div className="inputBox">
                 <img src={lock} alt="icon" />
                 <input
-                  type="text"
+                  type="tel"
                   placeholder="전화번호를 입력하세요"
                   name="phone"
                   value={registerForm.phone}
-                  onChange={(event) =>
-                    setRegisterForm((prev) => ({ ...prev, phone: event.target.value }))
-                  }
+                  onChange={updateRegisterFormField(setRegisterForm, "phone")}
+                  inputMode="numeric"
+                  autoComplete="tel"
+                  maxLength={13}
                 />
               </div>
             </div>
@@ -553,7 +614,16 @@ export default function Login({ initialMode = "login" }) {
 
   useEffect(() => {
     if (location.state?.authError) {
-      setLoginError("소셜 로그인에 실패했습니다. 다시 시도해주세요.");
+      const providerLabelMap = {
+        kakao: "카카오",
+        google: "구글",
+        naver: "네이버",
+      };
+      const provider = location.state?.authProvider;
+      const providerLabel = providerLabelMap[provider] || "소셜";
+      const authError = location.state?.authError;
+
+      setLoginError(getSocialAuthErrorMessage(providerLabel, authError));
     }
   }, [location.state]);
 

@@ -1,32 +1,85 @@
 import { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
+import Skeleton from "react-loading-skeleton";
+import "react-loading-skeleton/dist/skeleton.css";
 
 import LikeAfterIcon from "@/assets/icons/like-after.svg";
 import LikeBeforeIcon from "@/assets/icons/like-before.svg";
+import CartIcon from "@/assets/icons/cart-straight.svg";
 import { useToast } from "@/components/Toast/toastContext";
-import { addToWishlist } from "@/store/slices/wishlistSlice";
-import CartIconButton from "components/CartIconButton/CartIconButton";
+import { addToCart } from "@/store/slices/cartSlice";
+import { addToWishlist, removeFromWishlist } from "@/store/slices/wishlistSlice";
+import { trackAddToCart, trackGuidedShopping } from "@/utils/analytics";
+import { buildProductDetailPath, getProductObjectId } from "@/utils/productIdentity";
 
 const parsePrice = (value) => Number(String(value ?? "0").replace(/[^0-9]/g, "")) || 0;
+const buildCartItemId = (productId, optionKey) => `${productId}::${optionKey || "default"}`;
 
-const getProductId = (product) => product?._id ?? product?.productId ?? product?.id;
+const toCartItem = (product, label) => {
+  const productId = getProductObjectId(product);
+  const option =
+    product?.option ?? product?.spec ?? product?.priceOptions?.[0]?.optionName ?? "기본 옵션";
+  const optionKey = String(product?.optionId ?? option ?? "default");
 
-const toWishlistItem = (product) => ({
-  id: getProductId(product),
-  name: product?.name ?? product?.title ?? "상품명",
-  price: parsePrice(product?.price),
-  image: product?.image ?? product?.heroImage ?? "",
-  rating: Number(product?.rating) || 0,
-});
+  return {
+    id: product?.cartItemId ?? buildCartItemId(productId, optionKey),
+    productId,
+    _id: productId,
+    category: product?.category ?? label ?? "상품",
+    name: product?.name ?? product?.title ?? "상품명",
+    option,
+    price: parsePrice(product?.price),
+    image: product?.image ?? product?.heroImage ?? "",
+    quantity: 1,
+  };
+};
+
+const toWishlistItem = (product) => {
+  const productId = getProductObjectId(product);
+
+  return {
+    id: productId,
+    _id: productId,
+    productId,
+    name: product?.name ?? product?.title ?? "상품명",
+    price: parsePrice(product?.price),
+    image: product?.image ?? product?.heroImage ?? "",
+    rating: Number(product?.rating) || 0,
+  };
+};
+
+const normalizeImageSrc = (src) => {
+  const imageSrc = String(src ?? "").trim();
+
+  if (!imageSrc || imageSrc.startsWith("http:///")) {
+    return "";
+  }
+
+  return imageSrc;
+};
+
+const ImageOrSkeleton = ({ src, alt, className = "" }) => {
+  const imageSrc = normalizeImageSrc(src);
+
+  if (!imageSrc) {
+    return (
+      <Skeleton
+        className={`package-image-skeleton ${className}`.trim()}
+        containerClassName="package-image-skeleton-container"
+      />
+    );
+  }
+
+  return <img src={imageSrc} alt={alt} className={className} />;
+};
 
 function PackageCard({
   title,
   description,
   price,
   mainImage,
-  detailItems,
-  product,
+  detailItems = [],
   defaultOpen = false,
 }) {
   const dispatch = useDispatch();
@@ -34,32 +87,82 @@ function PackageCard({
   const { showToast } = useToast();
   const wishlistItems = useSelector((state) => state.wishlist.items);
   const [isOpen, setIsOpen] = useState(defaultOpen);
-  const packageProduct = product ?? {
-    id: title,
-    name: title,
-    price,
-    image: mainImage,
-    option: "추천 조합",
-  };
 
   const packageProducts = detailItems.map((item) => item.product).filter(Boolean);
+
+  const handlePackageCartClick = (event) => {
+    event.stopPropagation();
+
+    let addedCount = 0;
+
+    detailItems.forEach((item) => {
+      const cartItem = toCartItem(item.product, item.label);
+
+      if (cartItem.productId) {
+        dispatch(addToCart(cartItem));
+        addedCount += 1;
+      }
+    });
+
+    if (addedCount > 0) {
+      trackGuidedShopping({
+        signal: "package_add_to_cart",
+        source: "recommendation_package",
+        label: title ?? "추천 조합",
+        value: addedCount,
+        params: {
+          item_count: addedCount,
+        },
+      });
+      trackAddToCart(title ?? "추천 조합");
+      showToast("추천 조합 상품을 장바구니에 담았습니다.");
+    }
+  };
+
   const allPackageItemsWishlisted =
     packageProducts.length > 0 &&
     packageProducts.every((item) =>
-      wishlistItems.some((wishlistItem) => wishlistItem.id === getProductId(item)),
+      wishlistItems.some(
+        (wishlistItem) => getProductObjectId(wishlistItem) === getProductObjectId(item),
+      ),
     );
 
   const handlePackageWishlistClick = (event) => {
     event.stopPropagation();
+
+    trackGuidedShopping({
+      signal: allPackageItemsWishlisted ? "package_wishlist_remove" : "package_wishlist_add",
+      source: "recommendation_package",
+      label: title ?? "추천 조합",
+      value: packageProducts.length,
+      params: {
+        item_count: packageProducts.length,
+      },
+    });
+
+    if (allPackageItemsWishlisted) {
+      packageProducts.forEach((item) => {
+        const productId = getProductObjectId(item);
+
+        if (productId) {
+          dispatch(removeFromWishlist(productId));
+        }
+      });
+
+      showToast("찜 목록에서 제거했습니다.");
+      return;
+    }
+
     let addedCount = 0;
 
     packageProducts.forEach((item) => {
       const wishlistItem = toWishlistItem(item);
+
       const isAlreadyWishlisted = wishlistItems.some(
-        (existingItem) => existingItem.id === wishlistItem.id,
+        (existingItem) => getProductObjectId(existingItem) === wishlistItem.productId,
       );
 
-      if (wishlistItem.id !== undefined && !isAlreadyWishlisted) {
+      if (wishlistItem.productId && !isAlreadyWishlisted) {
         dispatch(addToWishlist(wishlistItem));
         addedCount += 1;
       }
@@ -69,28 +172,46 @@ function PackageCard({
   };
 
   const handleDetailItemClick = (item) => {
-    const productId = getProductId(item.product);
+    const detailPath = buildProductDetailPath(item.product);
 
-    if (productId !== undefined && productId !== null) {
-      navigate(`/product/${productId}`);
+    if (detailPath) {
+      trackGuidedShopping({
+        signal: "package_product_click",
+        source: "recommendation_package",
+        label: item.title ?? item.product?.name,
+      });
+      navigate(detailPath);
     }
   };
 
   return (
     <div className={`pakage_box ${isOpen ? "is-open" : ""}`}>
       <div className="pakage_big">
-        <img src={mainImage} alt="pakage_img" className="pakage_img" />
+        <ImageOrSkeleton src={mainImage} alt={title || "추천 조합 이미지"} className="pakage_img" />
+
         <div className="pakage_texts">
           <p>{title}</p>
           <p className="gray_text">{description}</p>
+
           <div className="pakage_bottom">
             <p>{price}</p>
+
             <div className="icons">
-              <CartIconButton product={packageProduct} size="sm" />
+              <button
+                type="button"
+                className="cart-icon-button cart-icon-button--sm"
+                aria-label="추천 조합 전체 장바구니 담기"
+                onClick={handlePackageCartClick}
+              >
+                <img src={CartIcon} alt="" />
+              </button>
+
               <button
                 type="button"
                 className="wishlist-icon-button wishlist-icon-button--sm"
-                aria-label="추천 조합 전체 찜하기"
+                aria-label={
+                  allPackageItemsWishlisted ? "추천 조합 전체 찜 해제" : "추천 조합 전체 찜하기"
+                }
                 onClick={handlePackageWishlistClick}
               >
                 <img src={allPackageItemsWishlisted ? LikeAfterIcon : LikeBeforeIcon} alt="" />
@@ -99,6 +220,7 @@ function PackageCard({
           </div>
         </div>
       </div>
+
       <div className="pakage_small">
         <div className="pakage_small_inner">
           {detailItems.map((item, index) => (
@@ -109,8 +231,9 @@ function PackageCard({
                 onClick={() => handleDetailItemClick(item)}
                 aria-label={`${item.title} 상세페이지로 이동`}
               >
-                <img src={item.image} alt="" />
+                <ImageOrSkeleton src={item.image} alt={item.title || item.label || "상품 이미지"} />
               </button>
+
               <button
                 type="button"
                 className="pakage_item"
@@ -124,6 +247,7 @@ function PackageCard({
           ))}
         </div>
       </div>
+
       <button
         type="button"
         className={`chevron ${!isOpen ? "is-open" : ""}`}

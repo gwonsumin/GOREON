@@ -1,5 +1,5 @@
-﻿@import "styles/variables";
-@import "styles/mixins";
+@use "styles/variables" as *;
+@use "styles/mixins" as *;
 
 .pc-assembly {
   padding-top: 40px;
@@ -23,15 +23,25 @@
   }
 
   .filter-button {
-    display: flex;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 1 auto;
+    min-width: fit-content;
+    min-height: 32px;
     border: 1px solid #60606024;
     border-radius: 999px;
-    font-size: $font-xs;
-    gap: $space-xs;
-    padding: $space-xxs $space-xs;
+    background-color: #ffffff;
+    font-size: $font-xs-2;
+    font-weight: $font-medium;
+    line-height: 1;
+    gap: 6px;
+    padding: 5px 10px;
+    white-space: nowrap;
 
     img {
       width: $font-xs;
+      flex: 0 0 auto;
     }
   }
 
@@ -51,10 +61,10 @@
 
   &__add-button {
     @include button-base();
-      min-width: 44px;
-      height: 20px;
-      padding: 0px 0px;    
-      font-size: $font-xs;
+    min-width: 44px;
+    height: 20px;
+    padding: 0px 0px;
+    font-size: $font-xs;
   }
 
   &__section-bar {
@@ -128,9 +138,7 @@
     justify-content: flex-start;
     font-size: $font-sm;
     font-weight: $font-semibold;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    @include ellipsis;
 
     &--warning {
       color: $color-warning;
@@ -138,23 +146,6 @@
 
     &--error {
       color: $color-error;
-    }
-  }
-
-  &__filter {
-    display: flex;
-    flex-direction: column;
-    gap: $space-xs;
-    align-items: flex-start;
-    font-size: $font-sm;
-  }
-
-  &__filter-category {
-    color: $color-text-muted;
-
-    &.is-active {
-      color: $color-text-main;
-      font-weight: $font-bold;
     }
   }
 
@@ -241,6 +232,175 @@
   }
 }
 
+.pc-assembly-filter-panel {
+  width: 100%;
+
+  &__top {
+    display: flex;
+    justify-content: space-between;
+    background-color: $color-gray-100;
+    border: 1px solid $color-border;
+    border-radius: 20px 20px 0 0;
+    gap: 40px;
+    padding: 23px;
+
+    h2 {
+      font-size: $font-xl;
+      color: $color-text-main;
+      font-weight: $font-bold;
+    }
+  }
+
+  &__reset {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    p {
+      color: $color-sub-category-text;
+      font-size: $font-md;
+      font-weight: $font-medium;
+    }
+
+    button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+    }
+  }
+
+  &__body {
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+    padding: 29px 0;
+    background-color: #ffffff;
+    border: 1px solid $color-border;
+    border-top: 0;
+  }
+}
+
+.pc-assembly-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background-color: #ffffff;
+  padding: 0 23px;
+
+  &__title {
+    display: flex;
+    justify-content: space-between;
+
+    h3 {
+      font-size: $font-lg-2;
+      font-weight: $font-bold;
+    }
+  }
+}
+
+.pc-assembly-filter-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+  transition: max-height 0.4s ease-out;
+}
+
+.pc-assembly-filter-option {
+  &__label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+  }
+
+  p {
+    color: $color-sub-category-text;
+    font-size: $font-sm;
+    font-weight: $font-medium;
+  }
+
+  input:checked + p {
+    color: $color-text-main;
+    font-weight: $font-bold;
+  }
+}
+
+.pc-assembly-mobile-filter-modal {
+  .modal__title {
+    margin: 12px 0 16px;
+    font-size: $font-lg;
+  }
+}
+
+.pc-assembly-mobile-filter {
+  padding: 0 0 8px;
+
+  &__tabs {
+    @include flex(center, space-between);
+    padding-bottom: 14px;
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: none;
+  }
+
+  &__tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  &__tab {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: $color-sub-category-text;
+    font-size: $font-md;
+    font-weight: $font-medium;
+  }
+
+  &__tab.is-active {
+    color: $color-text-main;
+    font-weight: $font-bold;
+  }
+
+  &__content {
+    min-height: 96px;
+    padding-top: 4px;
+  }
+
+  .pc-assembly-filter-options {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 12px 18px;
+  }
+
+  .pc-assembly-filter-option {
+    min-height: 24px;
+  }
+
+  &__actions {
+    display: flex;
+    margin-top: 18px;
+  }
+
+  &__reset {
+    @include button-reverse($bg: #ffffff, $color: $color-text-main, $radius: 12px);
+    @include flex(center, center);
+    width: 100%;
+    min-width: 0;
+    height: 40px;
+    padding: 0;
+    border-color: rgba(96, 96, 96, 0.2);
+    gap: 6px;
+
+    img {
+      display: block;
+      width: 14px;
+      height: 14px;
+    }
+  }
+}
+
 @include mobile {
   .pc-assembly {
     &__product-grid {
@@ -268,13 +428,15 @@
 
     &__quote-overlay {
       &.modal-overlay--fullscreen {
+        height: calc(100vh - (var(--mobile-header-height) + 95px));
         align-items: flex-end;
         padding-top: 12px;
       }
     }
 
     &__quote-modal {
-      height: calc(100dvh - 12px);
+      height: calc(100dvh - 190px);
+      max-height: calc(100dvh - 12px);
       border-radius: 20px 20px 0 0;
       padding-top: 12px;
     }
@@ -282,8 +444,7 @@
     &__total {
       min-height: 42px;
       font-size: clamp($font-sm, 4vw, $font-md);
-      overflow: hidden;
-      text-overflow: ellipsis;
+      @include ellipsis;
     }
 
     &__compatibility {
@@ -413,28 +574,6 @@
       gap: $space-md;
     }
 
-    &__desktop-filter {
-      border-radius: 16px;
-      border: 1px solid #60606024;
-      overflow: hidden;
-    }
-
-    &__desktop-filter-title {
-      font-weight: $font-bold;
-      background-color: $color-gray-100;
-      padding: $space-md;
-      font-size: $font-lg;
-    }
-
-    &__desktop-filter-list {
-      padding: $space-md;
-
-      .pc-assembly__filter-category {
-        font-size: $font-md;
-        padding-left: 0;
-      }
-    }
-
     &__main {
       grid-column: span 9;
       display: flex;
@@ -446,6 +585,14 @@
       display: flex;
       flex-direction: column;
       gap: $space-md;
+    }
+
+    &__add-button {
+      min-width: 60px;
+      height: 32px;
+      padding: 0 14px;
+      font-size: $font-sm;
+      font-weight: $font-semibold;
     }
 
     .filter-button {

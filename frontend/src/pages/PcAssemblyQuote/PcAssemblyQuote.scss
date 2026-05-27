@@ -1,5 +1,5 @@
-@import "styles/variables";
-@import "styles/mixins";
+@use "styles/variables" as *;
+@use "styles/mixins" as *;
 
 .pc-assembly-quote {
   width: 100%;
@@ -226,9 +226,7 @@
     min-width: 0;
     font-size: $font-sm;
     font-weight: $font-semibold;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    @include ellipsis;
 
     &--ok {
       color: $color-text-sub;

@@ -1,26 +1,32 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { addQuoteItem } from "@/store/slices/quoteSlice";
-import "./PcAssembly.scss";
-
-import ProductCardVertical from "@/components/ProductCard/ProductCardVertical";
-import ProductCardHorizontal from "@/components/ProductCard/ProductCardHorizontal";
-import Modal from "@/components/Modal/Modal";
-import PcAssemblyQuote from "@/pages/PcAssemblyQuote/PcAssemblyQuote";
+import { trackSelfDiscoveryShopping } from "@/utils/analytics";
+import { lockPageScroll } from "@/utils/scrollLock";
 
 import banner1 from "@/assets/banner/banner-1.jpg";
 import ChevronDownIcon from "@/assets/icons/chevron-down.svg";
 import CheckIcon from "@/assets/icons/check.svg";
 import CloseIcon from "@/assets/event/close.svg";
+import resetIcon from "@/assets/icons/reset.svg";
+import Modal from "@/components/Modal/Modal";
+import ProductCardHorizontal from "@/components/ProductCard/ProductCardHorizontal";
+import ProductCardVertical from "@/components/ProductCard/ProductCardVertical";
+import useProductCatalog from "@/hooks/useProductCatalog";
+import PcAssemblyQuote from "@/pages/PcAssemblyQuote/PcAssemblyQuote";
+import { addQuoteItem } from "@/store/slices/quoteSlice";
 import {
   PC_ASSEMBLY_CATEGORIES,
   getPcAssemblyPerformanceChecks,
-  pcAssemblyProducts,
+  getPcAssemblyProducts,
 } from "@/utils/pcAssemblyProducts";
+import "./PcAssembly.scss";
+import { useToast } from "@/components/Toast/toastContext";
 
 function PcAssembly() {
+  const { showToast } = useToast();
   const dispatch = useDispatch();
   const items = useSelector((state) => state.quote.items);
+  const { products } = useProductCatalog();
 
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isQuoteOpen, setIsQuoteOpen] = useState(false);
@@ -34,7 +40,12 @@ function PcAssembly() {
   useEffect(() => {
     const desktopMq = window.matchMedia("(min-width: 1024px)");
     const mobileMq = window.matchMedia("(max-width: 767px)");
-    const handleDesktopChange = (event) => setIsDesktop(event.matches);
+    const handleDesktopChange = (event) => {
+      setIsDesktop(event.matches);
+      if (event.matches) {
+        setIsFilterOpen(false);
+      }
+    };
     const handleMobileChange = (event) => setIsMobile(event.matches);
 
     desktopMq.addEventListener("change", handleDesktopChange);
@@ -78,33 +89,24 @@ function PcAssembly() {
   }, [isDesktop, isQuoteOpen]);
 
   useEffect(() => {
-    if (!(isDesktop && isQuoteOpen)) return;
-    const scrollBarWidth = window.innerWidth - document.documentElement.clientWidth;
-    const prevOverflow = document.body.style.overflow;
-    const prevPaddingRight = document.body.style.paddingRight;
-
-    document.body.style.overflow = "hidden";
-    document.body.style.paddingRight = `${scrollBarWidth}px`;
-
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      document.body.style.paddingRight = prevPaddingRight;
-    };
+    if (!(isDesktop && isQuoteOpen)) return undefined;
+    return lockPageScroll();
   }, [isDesktop, isQuoteOpen]);
 
+  const pcAssemblyProducts = useMemo(() => getPcAssemblyProducts(products), [products]);
   const getQuoteItemQuantity = (item) => Number(item.quantity) || 1;
   const quoteItemCount = items.reduce((sum, item) => sum + getQuoteItemQuantity(item), 0);
-  const totalPrice = items.reduce(
-    (sum, item) => sum + item.price * getQuoteItemQuantity(item),
-    0,
-  );
+  const totalPrice = items.reduce((sum, item) => sum + item.price * getQuoteItemQuantity(item), 0);
   const formattedTotalPrice = totalPrice.toLocaleString("ko-KR");
 
   const filteredProducts = useMemo(
     () => pcAssemblyProducts.filter((product) => product.category === selectedCategory),
-    [selectedCategory],
+    [pcAssemblyProducts, selectedCategory],
   );
-  const compatibilityChecks = useMemo(() => getPcAssemblyPerformanceChecks(items), [items]);
+  const compatibilityChecks = useMemo(
+    () => getPcAssemblyPerformanceChecks(items, products),
+    [items, products],
+  );
   const compatibilityStatus = useMemo(() => {
     if (!compatibilityChecks.length) return null;
     if (compatibilityChecks.some((row) => row.level === "error")) {
@@ -113,11 +115,23 @@ function PcAssembly() {
     return null;
   }, [compatibilityChecks]);
 
-  const handleAddQuoteItem = (product) => {
+  const handleAddQuoteItem = (product, event) => {
+    event?.stopPropagation();
+
+    trackSelfDiscoveryShopping({
+      signal: "pc_assembly_add_quote_item",
+      source: "pc_assembly",
+      label: product.name,
+      params: {
+        product_category: product.category,
+      },
+    });
+
     dispatch(
       addQuoteItem({
-        id: `${product.category}-${product.id}`,
-        productId: product.id,
+        id: `${product.category}-${product._id}`,
+        _id: product._id,
+        productId: product._id,
         category: product.category,
         name: product.name,
         option: product.option,
@@ -128,21 +142,85 @@ function PcAssembly() {
         compatibility: "ok",
         status: "ok",
       }),
+      showToast("견적 리스트에 담았습니다."),
     );
   };
 
-  const filterContent = (
-    <div className="pc-assembly__filter">
+  const resetFilters = () => {
+    trackSelfDiscoveryShopping({
+      signal: "pc_assembly_filter_reset",
+      source: "pc_assembly",
+    });
+    setSelectedCategory(PC_ASSEMBLY_CATEGORIES[0] ?? "CPU");
+  };
+
+  const handleCategoryChange = (category) => {
+    trackSelfDiscoveryShopping({
+      signal: "pc_assembly_category_filter",
+      source: "pc_assembly",
+      label: category,
+      params: {
+        product_category: category,
+      },
+    });
+    setSelectedCategory(category);
+  };
+
+  const renderCategoryOptions = (idPrefix) => (
+    <ul className="pc-assembly-filter-options">
       {PC_ASSEMBLY_CATEGORIES.map((category) => (
-        <button
-          key={category}
-          type="button"
-          className={`pc-assembly__filter-category ${selectedCategory === category ? "is-active" : ""}`}
-          onClick={() => setSelectedCategory(category)}
-        >
-          {category}
-        </button>
+        <li key={category} className="pc-assembly-filter-option">
+          <label htmlFor={`${idPrefix}-${category}`} className="pc-assembly-filter-option__label">
+            <input
+              id={`${idPrefix}-${category}`}
+              checked={selectedCategory === category}
+              type="checkbox"
+              onChange={() => handleCategoryChange(category)}
+            />
+            <p>{category}</p>
+          </label>
+        </li>
       ))}
+    </ul>
+  );
+
+  const desktopFilterContent = (
+    <section className="pc-assembly-filter-panel" aria-label="PC 조립 필터">
+      <div className="pc-assembly-filter-panel__top">
+        <h2>필터</h2>
+        <div className="pc-assembly-filter-panel__reset">
+          <p>초기화</p>
+          <button type="button" onClick={resetFilters} aria-label="필터 초기화">
+            <img src={resetIcon} alt="" />
+          </button>
+        </div>
+      </div>
+      <div className="pc-assembly-filter-panel__body">
+        <div className="pc-assembly-filter-group">
+          <div className="pc-assembly-filter-group__title">
+            <h3>카테고리</h3>
+          </div>
+          {renderCategoryOptions("pc-assembly-desktop-category")}
+        </div>
+      </div>
+    </section>
+  );
+
+  const mobileFilterContent = (
+    <div className="pc-assembly-mobile-filter">
+      <div className="pc-assembly-mobile-filter__tabs">
+        <button type="button" className="pc-assembly-mobile-filter__tab is-active">
+          카테고리
+        </button>
+      </div>
+      <div className="pc-assembly-mobile-filter__content">
+        {renderCategoryOptions("pc-assembly-mobile-category")}
+      </div>
+      <div className="pc-assembly-mobile-filter__actions">
+        <button type="button" className="pc-assembly-mobile-filter__reset" onClick={resetFilters}>
+          초기화 <img src={resetIcon} alt="" />
+        </button>
+      </div>
     </div>
   );
 
@@ -164,7 +242,17 @@ function PcAssembly() {
         <button
           type="button"
           className="pc-assembly__list-button"
-          onClick={() => setIsQuoteOpen(true)}
+          onClick={() => {
+            trackSelfDiscoveryShopping({
+              signal: "pc_assembly_quote_open",
+              source: "pc_assembly",
+              value: quoteItemCount,
+              params: {
+                item_count: quoteItemCount,
+              },
+            });
+            setIsQuoteOpen(true);
+          }}
         >
           견적 리스트
         </button>
@@ -180,7 +268,7 @@ function PcAssembly() {
 
       <section className="pc-assembly__top">
         <h2 className="pc-assembly__title">PC 조립</h2>
-        <button className="filter-button" onClick={() => setIsFilterOpen(true)}>
+        <button type="button" className="filter-button" onClick={() => setIsFilterOpen(true)}>
           필터 <img src={ChevronDownIcon} alt="down" />
         </button>
       </section>
@@ -191,12 +279,17 @@ function PcAssembly() {
         <div className="pc-assembly__product-grid">
           {filteredProducts.map((product) => (
             <ProductCardVertical
-              key={product.id}
+              key={product._id}
               product={product}
               action={
                 <button
+                  type="button"
                   className="pc-assembly__add-button"
-                  onClick={() => handleAddQuoteItem(product)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleAddQuoteItem(product);
+                  }}
                 >
                   담기
                 </button>
@@ -209,23 +302,23 @@ function PcAssembly() {
       <section className="pc-assembly__desktop" ref={desktopSectionRef}>
         {renderSectionBar()}
 
-        <aside className="pc-assembly__sidebar">
-          <div className="pc-assembly__desktop-filter">
-            <div className="pc-assembly__desktop-filter-title">카테고리</div>
-            <div className="pc-assembly__desktop-filter-list">{filterContent}</div>
-          </div>
-        </aside>
+        <aside className="pc-assembly__sidebar">{desktopFilterContent}</aside>
 
         <div className="pc-assembly__main">
           <div className="pc-assembly__desktop-list">
             {filteredProducts.map((product) => (
               <ProductCardHorizontal
-                key={product.id}
+                key={product._id}
                 product={product}
                 action={
                   <button
+                    type="button"
                     className="pc-assembly__add-button"
-                    onClick={() => handleAddQuoteItem(product)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleAddQuoteItem(product);
+                    }}
                   >
                     담기
                   </button>
@@ -236,9 +329,14 @@ function PcAssembly() {
         </div>
       </section>
 
-      {isFilterOpen && (
-        <Modal title="필터" onClose={() => setIsFilterOpen(false)} showCloseButton={false}>
-          {filterContent}
+      {!isDesktop && isFilterOpen && (
+        <Modal
+          title="필터"
+          onClose={() => setIsFilterOpen(false)}
+          className="pc-assembly-mobile-filter-modal"
+          showCloseButton={false}
+        >
+          {mobileFilterContent}
         </Modal>
       )}
 
