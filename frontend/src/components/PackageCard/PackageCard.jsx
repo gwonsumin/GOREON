@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import Skeleton from "react-loading-skeleton";
@@ -12,6 +12,7 @@ import { addToCart } from "@/store/slices/cartSlice";
 import { addToWishlist, removeFromWishlist } from "@/store/slices/wishlistSlice";
 import { trackAddToCart, trackGuidedShopping } from "@/utils/analytics";
 import { buildProductDetailPath, getProductObjectId } from "@/utils/productIdentity";
+import { createImageErrorRetryHandler } from "@/utils/handleProductImageError";
 
 const parsePrice = (value) => Number(String(value ?? "0").replace(/[^0-9]/g, "")) || 0;
 const buildCartItemId = (productId, optionKey) => `${productId}::${optionKey || "default"}`;
@@ -62,9 +63,13 @@ const normalizeImageSrc = (src) => {
 const ImageOrSkeleton = ({ src, alt, className = "" }) => {
   const imageSrc = normalizeImageSrc(src);
   const [loadFailed, setLoadFailed] = useState(false);
+  // 외부에서 스크랩해 온 상품 이미지(danuri.io)는 CDN이 일시적으로 503을
+  // 반환하는 경우가 있어, 스켈레톤으로 대체하기 전에 먼저 재시도한다.
+  const handleImageError = useMemo(
+    () => createImageErrorRetryHandler(() => setLoadFailed(true)),
+    [],
+  );
 
-  // 외부에서 스크랩해 온 상품 이미지(danuri.io)는 원본이 만료/삭제되면
-  // 깨진 이미지 아이콘으로 그대로 노출된다. 로드 실패 시 스켈레톤으로 대체한다.
   if (!imageSrc || loadFailed) {
     return (
       <Skeleton
@@ -75,7 +80,7 @@ const ImageOrSkeleton = ({ src, alt, className = "" }) => {
   }
 
   return (
-    <img src={imageSrc} alt={alt} className={className} onError={() => setLoadFailed(true)} />
+    <img src={imageSrc} alt={alt} className={className} loading="lazy" onError={handleImageError} />
   );
 };
 
