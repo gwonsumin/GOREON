@@ -7,6 +7,7 @@ import LikeBeforeIcon from "@/assets/icons/like-before.svg";
 import { useToast } from "@/components/Toast/toastContext";
 import { addToWishlist } from "@/store/slices/wishlistSlice";
 import CartIconButton from "components/CartIconButton/CartIconButton";
+import { handleProductImageError } from "@/utils/handleProductImageError";
 
 const parsePrice = (value) => Number(String(value ?? "0").replace(/[^0-9]/g, "")) || 0;
 
@@ -83,9 +84,8 @@ function PackageCard({
           src={mainImage}
           alt={title || "추천 조합"}
           className="pakage_img"
-          onError={(event) => {
-            event.currentTarget.style.display = "none";
-          }}
+          loading="lazy"
+          onError={handleProductImageError}
         />
         <div className="pakage_texts">
           <p>{title}</p>
@@ -119,9 +119,8 @@ function PackageCard({
                 <img
                   src={item.image}
                   alt=""
-                  onError={(event) => {
-                    event.currentTarget.style.display = "none";
-                  }}
+                  loading="lazy"
+                  onError={handleProductImageError}
                 />
               </button>
               <button

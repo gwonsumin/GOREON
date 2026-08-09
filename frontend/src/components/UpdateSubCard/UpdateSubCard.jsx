@@ -1,3 +1,5 @@
+import { handleProductImageError } from "@/utils/handleProductImageError";
+
 function UpdateSubCard({
   thumbnailImage,
   title,
@@ -43,9 +45,8 @@ function UpdateSubCard({
               src={thumbnailImage}
               alt={title}
               className="pakage_img"
-              onError={(event) => {
-                event.currentTarget.style.display = "none";
-              }}
+              loading="lazy"
+              onError={handleProductImageError}
             />
           </div>
           <div className="pakage_texts">

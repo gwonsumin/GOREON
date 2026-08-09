@@ -21,6 +21,7 @@ import WishlistIconButton from "components/WishlistIconButton/WishlistIconButton
 import EventModal from "components/EventModal/EventModal";
 import Modal from "components/Modal/Modal";
 import productsData from "@/data/products_list.json";
+import { handleProductImageError } from "@/utils/handleProductImageError";
 import { addAiRecommendationHistory } from "@/store/slices/aiRecommendationHistory";
 import api from "@/utils/api";
 import { fetchAiRecommendations } from "@/utils/recommendations";
@@ -220,11 +221,6 @@ const normalizeImageUrl = (value) => {
   return raw;
 };
 
-// 크롤링해 온 상품 이미지(danuri.io)는 원본이 만료/삭제되면 깨진 이미지
-// 아이콘으로 그대로 노출된다. 로드 실패 시 요소를 숨겨 빈 박스로 대체한다.
-const hideOnImageError = (event) => {
-  event.currentTarget.style.display = "none";
-};
 
 const getAiReviewProductId = (product) => product.productId ?? product._id ?? product.id;
 
@@ -1022,7 +1018,7 @@ function Main() {
     return (
       <div className="items" key={item.id}>
         <div className="item_img_box">
-          <img src={item.image} alt={item.name} className="item_img" onError={hideOnImageError} />
+          <img src={item.image} alt={item.name} className="item_img" loading="lazy" onError={handleProductImageError} />
           <div className="icons" onClick={stopCardAction}>
             <CartIconButton product={product} size="sm" />
             <WishlistIconButton product={product} size="sm" />
@@ -1178,7 +1174,7 @@ function Main() {
                     }
                   }}
                 >
-                  <img src={item.image} alt={item.name} onError={hideOnImageError} />
+                  <img src={item.image} alt={item.name} loading="lazy" onError={handleProductImageError} />
                   <div className="texts">
                     <p>{item.name}</p>
                     <p>{item.spec}</p>
@@ -1430,7 +1426,7 @@ function Main() {
                             src={item.thumbnailImage}
                             alt={item.name}
                             className="item_img"
-                            onError={hideOnImageError}
+                            loading="lazy" onError={handleProductImageError}
                           />
                           <div className="icons">
                             <CartIconButton product={createMainProduct(item)} size="sm" />
@@ -1467,7 +1463,7 @@ function Main() {
           <div className="main-spec-modal">
             <div className="main-spec-modal__summary">
               <div className="main-spec-modal__image">
-                <img src={selectedSpecProduct.image} alt={selectedSpecProduct.name} onError={hideOnImageError} />
+                <img src={selectedSpecProduct.image} alt={selectedSpecProduct.name} loading="lazy" onError={handleProductImageError} />
               </div>
               <div className="main-spec-modal__product">
                 <p className="main-spec-modal__name">{selectedSpecProduct.name}</p>
