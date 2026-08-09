@@ -1,7 +1,18 @@
-﻿import ListLayout from "@/layouts/ListLayout/ListLayout";
+import ListLayout from "@/layouts/ListLayout/ListLayout";
 import api from "@/utils/api";
+import { trackSelfDiscoveryShopping } from "@/utils/analytics";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+const GROUP_LABEL_MAP = {
+  pc: "PC",
+  mobile: "모바일",
+  tablet: "태블릿",
+  home: "생활가전",
+  premium: "프리미엄",
+  value: "가성비",
+  gaming: "게이밍",
+};
+
 const TYPE_LABEL_MAP = {
   laptop: "노트북",
   notebook: "노트북",
@@ -40,14 +51,19 @@ const List = () => {
   const [status, setStatus] = useState("loading");
   const [errorMessage, setErrorMessage] = useState("");
   const type = searchParams.get("type");
-  const selectedTypeLabel = TYPE_LABEL_MAP[type] ?? type ?? "전체 상품";
+  const group = searchParams.get("group");
+  const selectedTypeLabel =
+    GROUP_LABEL_MAP[group] ?? TYPE_LABEL_MAP[type] ?? group ?? type ?? "전체 상품";
   useEffect(() => {
     const controller = new AbortController();
     const fetchData = async () => {
       try {
         setStatus("loading");
         const result = await api.get("/products", {
-          params: type ? { type } : {},
+          params: {
+            ...(type ? { type } : {}),
+            ...(group ? { group } : {}),
+          },
           signal: controller.signal,
         });
         setProducts(result.data.data);
@@ -58,7 +74,16 @@ const List = () => {
         setErrorMessage("검색 결과를 불러오지 못했습니다.");
       }
     };
-    if (type) {
+    if (type || group) {
+      trackSelfDiscoveryShopping({
+        signal: group ? "category_group_results_view" : "category_type_results_view",
+        source: "list_page",
+        label: selectedTypeLabel,
+        params: {
+          selected_type: type || "",
+          selected_group: group || "",
+        },
+      });
       fetchData();
     } else {
       setProducts([]);
@@ -66,7 +91,7 @@ const List = () => {
     }
 
     return () => controller.abort();
-  }, [type]);
+  }, [group, selectedTypeLabel, type]);
 
   return (
     <div>
@@ -74,7 +99,7 @@ const List = () => {
         errorMessage={errorMessage}
         status={status}
         filteredProducts={products}
-        selectedType={type}
+        selectedType={type || group}
         selectedTypeLabel={selectedTypeLabel}
       />
     </div>

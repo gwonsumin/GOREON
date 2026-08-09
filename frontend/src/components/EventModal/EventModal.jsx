@@ -4,6 +4,7 @@ import { useSelector } from "react-redux";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import CloseIcon from "assets/event/close.svg";
+import { lockPageScroll } from "@/utils/scrollLock";
 
 import "./EventModal.scss";
 import EventModalDrawing from "./EventModalDrawing";
@@ -75,16 +76,10 @@ function EventModal({
 
   useEffect(() => {
     if (!shouldRenderModal) {
-      document.body.style.overflow = "";
-      document.documentElement.style.overflow = "";
       return undefined;
     }
 
-    const previousBodyOverflow = document.body.style.overflow;
-    const previousHtmlOverflow = document.documentElement.style.overflow;
-
-    document.body.style.overflow = "hidden";
-    document.documentElement.style.overflow = "hidden";
+    const releaseScrollLock = lockPageScroll({ lockHtml: true });
 
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
@@ -95,8 +90,7 @@ function EventModal({
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      document.body.style.overflow = previousBodyOverflow;
-      document.documentElement.style.overflow = previousHtmlOverflow;
+      releaseScrollLock();
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [shouldRenderModal, onClose]);
@@ -144,9 +138,6 @@ function EventModal({
 
     window.localStorage.setItem(EVENT_MODAL_DISMISS_STORAGE_KEY, String(dismissUntil.getTime()));
     setIsDismissedForToday(true);
-
-    document.body.style.overflow = "";
-    document.documentElement.style.overflow = "";
 
     onDismissToday?.(dismissUntil);
     onClose?.();

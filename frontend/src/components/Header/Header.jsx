@@ -9,6 +9,15 @@ import Cart from "@/assets/header/header-icons/cart.svg";
 import Like from "@/assets/header/header-icons/like.svg";
 import Search from "@/assets/header/header-icons/search.svg";
 import User from "@/assets/header/header-icons/user.svg";
+import AcerBrandIcon from "@/assets/header/nav/Acer.svg";
+import AppleBrandIcon from "@/assets/header/nav/Apple.svg";
+import AsusBrandIcon from "@/assets/header/nav/Asus.svg";
+import DellBrandIcon from "@/assets/header/nav/Dell.svg";
+import HpBrandIcon from "@/assets/header/nav/Hp.svg";
+import LenovoBrandIcon from "@/assets/header/nav/Lenovo.svg";
+import LGBrandIcon from "@/assets/header/nav/LG.svg";
+import MsiBrandIcon from "@/assets/header/nav/Msi.svg";
+import SamsungBrandIcon from "@/assets/header/nav/Samsung.svg";
 import ChevronDown from "@/assets/icons/chevron-down.svg";
 import Prev from "@/assets/icons/prev.svg";
 import {
@@ -20,6 +29,7 @@ import {
 } from "@/data/navigation";
 import { logout } from "@/store/slices/userSlice";
 import api from "@/utils/api";
+import { trackSelfDiscoveryShopping } from "@/utils/analytics";
 
 const DESKTOP_BREAKPOINT = 1024;
 
@@ -33,6 +43,18 @@ const DESKTOP_SEARCH_ICON_STYLE = {
   "--icon-height": "24px",
 };
 
+const BRAND_ICONS = {
+  acer: AcerBrandIcon,
+  apple: AppleBrandIcon,
+  asus: AsusBrandIcon,
+  dell: DellBrandIcon,
+  hp: HpBrandIcon,
+  lenovo: LenovoBrandIcon,
+  lg: LGBrandIcon,
+  msi: MsiBrandIcon,
+  samsung: SamsungBrandIcon,
+};
+
 const createExpandedState = (sections) =>
   sections.reduce((acc, section) => {
     acc[section.key] = true;
@@ -43,6 +65,24 @@ const createInitialExpandedMenus = () => ({
   category: createExpandedState(CATEGORY_MENU),
   brand: createExpandedState(BRAND_MENU),
 });
+
+function BrandMenuLabel({ item, iconClassName = "" }) {
+  const icon = BRAND_ICONS[item.type];
+
+  return (
+    <>
+      {icon ? (
+        <img
+          src={icon}
+          alt=""
+          aria-hidden="true"
+          className={["brand-menu__icon", iconClassName].filter(Boolean).join(" ")}
+        />
+      ) : null}
+      <span>{item.label}</span>
+    </>
+  );
+}
 
 function HeaderSearchForm({ searchQuery, onQueryChange, onSubmit, onSuggestionClick, onFocus }) {
   return (
@@ -85,6 +125,7 @@ function Header() {
   const navigate = useNavigate();
   const location = useLocation();
   const isLoggedIn = useSelector((state) => state.user.isLoggedIn);
+  const cartItems = useSelector((state) => state.cart.items);
   const desktopSearchRef = useRef(null);
   const searchCloseTimerRef = useRef(null);
 
@@ -96,6 +137,9 @@ function Header() {
   const [isSearchPinned, setIsSearchPinned] = useState(false);
   const [activeDesktopMenu, setActiveDesktopMenu] = useState(null);
   const [hoveredDesktopMenu, setHoveredDesktopMenu] = useState(null);
+
+  const cartItemCount = cartItems.reduce((total, item) => total + (Number(item.quantity) || 1), 0);
+  const cartBadgeLabel = cartItemCount > 99 ? "99+" : String(cartItemCount);
 
   const headerIcons = [
     { key: "cart", src: Cart, alt: "장바구니", to: "/cart", width: 26, height: 23 },
@@ -308,6 +352,15 @@ function Header() {
   const submitSearch = (keyword = searchQuery) => {
     const nextQuery = keyword.trim();
 
+    trackSelfDiscoveryShopping({
+      signal: "search_submit",
+      source: "header_search",
+      params: {
+        has_query: nextQuery ? "yes" : "no",
+        query_length: nextQuery.length,
+      },
+    });
+
     navigate(nextQuery ? `/search?q=${encodeURIComponent(nextQuery)}` : "/search");
     setSearchQuery(nextQuery);
     closeSearch();
@@ -321,6 +374,17 @@ function Header() {
   const handleMobileMenuLinkClick = () => {
     setIsMobileMenuOpen(false);
   };
+  const trackMenuNavigation = ({ signal, source, label }) => {
+    trackSelfDiscoveryShopping({
+      signal,
+      source,
+      label,
+      params: {
+        menu_label: label,
+      },
+    });
+  };
+
 
   const activeMobileSections = MOBILE_MENU_SECTIONS[activeMobileTab];
   const isBrandTab = activeMobileTab === "brand";
@@ -400,10 +464,15 @@ function Header() {
                   "--icon-width": `${icon.width}px`,
                   "--icon-height": `${icon.height}px`,
                 }}
-                aria-label={icon.alt}
+                aria-label={icon.key === "cart" ? `${icon.alt} ${cartItemCount}개` : icon.alt}
                 onClick={() => navigate(icon.to)}
               >
                 <img src={icon.src} alt="" />
+                {icon.key === "cart" && cartItemCount > 0 ? (
+                  <span className="header__cart-badge" aria-hidden="true">
+                    {cartBadgeLabel}
+                  </span>
+                ) : null}
               </button>
             ))}
           </div>
@@ -448,7 +517,17 @@ function Header() {
                   key={item.key}
                   onMouseEnter={() => openDesktopMenu(item.key)}
                 >
-                  <Link to={item.to} className="gnb__link">
+                  <Link
+                    to={item.to}
+                    className="gnb__link"
+                    onClick={() =>
+                      trackMenuNavigation({
+                        signal: "pc_assembly_nav_click",
+                        source: "desktop_nav",
+                        label: item.label,
+                      })
+                    }
+                  >
                     {item.label}
                   </Link>
                 </li>
@@ -483,11 +562,42 @@ function Header() {
                     <div className={innerClassName}>
                       {item.sections.map((section) => (
                         <div className="dropdown__column" key={section.key}>
-                          <div className="dropdown__title">{section.title}</div>
+                          <div className="dropdown__title">
+                            <Link
+                              to={`/list?group=${section.key}`}
+                              onClick={() =>
+                                trackMenuNavigation({
+                                  signal: `${item.variant}_group_click`,
+                                  source: "desktop_nav",
+                                  label: section.title,
+                                })
+                              }
+                            >
+                              {section.title}
+                            </Link>
+                          </div>
                           <ul className="dropdown__list">
                             {section.items.map((menuItem) => (
                               <li className={listItemClassName} key={menuItem.type}>
-                                <Link to={`/list?type=${menuItem.type}`}>{menuItem.label}</Link>
+                                <Link
+                                  to={`/list?type=${menuItem.type}`}
+                                  onClick={() =>
+                                    trackMenuNavigation({
+                                      signal: `${item.variant}_item_click`,
+                                      source: "desktop_nav",
+                                      label: menuItem.label,
+                                    })
+                                  }
+                                >
+                                  {item.variant === "brand" ? (
+                                    <BrandMenuLabel
+                                      item={menuItem}
+                                      iconClassName="brand-menu__icon--desktop"
+                                    />
+                                  ) : (
+                                    menuItem.label
+                                  )}
+                                </Link>
                               </li>
                             ))}
                           </ul>
@@ -563,8 +673,22 @@ function Header() {
                   >
                     {section.items.map((item) => (
                       <li key={item.type} className="mobile-menu__list-item">
-                        <Link to={`/list?type=${item.type}`} onClick={handleMobileMenuLinkClick}>
-                          {item.label}
+                        <Link
+                          to={`/list?type=${item.type}`}
+                          onClick={() => {
+                            trackMenuNavigation({
+                              signal: `${activeMobileTab}_item_click`,
+                              source: "mobile_nav",
+                              label: item.label,
+                            });
+                            handleMobileMenuLinkClick();
+                          }}
+                        >
+                          {isBrandTab ? (
+                            <BrandMenuLabel item={item} iconClassName="brand-menu__icon--mobile" />
+                          ) : (
+                            item.label
+                          )}
                         </Link>
                       </li>
                     ))}
@@ -581,7 +705,14 @@ function Header() {
               <Link
                 to="/pc-assembly"
                 className="mobile-menu__cta-link"
-                onClick={handleMobileMenuLinkClick}
+                onClick={() => {
+                  trackMenuNavigation({
+                    signal: "pc_assembly_nav_click",
+                    source: "mobile_nav",
+                    label: "PC 조립",
+                  });
+                  handleMobileMenuLinkClick();
+                }}
               >
                 PC 조립 페이지로 이동
               </Link>

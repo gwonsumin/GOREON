@@ -1,8 +1,10 @@
 import { useEffect, useRef } from "react";
+
+import { getProductListKey } from "@/utils/productIdentity";
 import AICharacter from "../AICharacter/AICharacter";
 import ChatProductCard from "./ChatProductCard";
 
-function ChatMessageList({ messages, isInitialView }) {
+function ChatMessageList({ messages, isInitialView, onProductDetailClick }) {
   const listRef = useRef(null);
   const scrollStateRef = useRef({
     messageCount: 0,
@@ -28,8 +30,7 @@ function ChatMessageList({ messages, isInitialView }) {
     }
 
     const { messageCount, lastMessageId, lastTextLength } = scrollStateRef.current;
-    const hasNewMessage =
-      messages.length !== messageCount || lastMessage?.id !== lastMessageId;
+    const hasNewMessage = messages.length !== messageCount || lastMessage?.id !== lastMessageId;
     const hasTypingProgress = (lastMessage?.text?.length ?? 0) !== lastTextLength;
 
     if (hasNewMessage || hasTypingProgress) {
@@ -76,7 +77,11 @@ function ChatMessageList({ messages, isInitialView }) {
 
                 <div className="chat-widget__product-list">
                   {message.products.map((product) => (
-                    <ChatProductCard key={product.id} product={product} />
+                    <ChatProductCard
+                      key={getProductListKey(product)}
+                      product={product}
+                      onViewDetails={onProductDetailClick}
+                    />
                   ))}
                 </div>
               </div>

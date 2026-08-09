@@ -8,10 +8,10 @@
     프로젝트 기간 : 2026.03.30 ~ 2026.04.30
   </p>
   <p>
-    <a href="https://goreon-0x90.onrender.com/" target="_blank">
+    <a href="https://goreon.vercel.app/" target="_blank">
       <img
         alt="서비스 바로가기"
-          src="https://img.shields.io/badge/GOREON%20서비스%20바로가기-0AA6A6?style=for-the-badge&logo=render&logoColor=white"
+          src="https://img.shields.io/badge/GOREON%20서비스%20바로가기-0AA6A6?style=for-the-badge&logo=vercel&logoColor=white"
       />
     </a>
   </p>
@@ -127,6 +127,19 @@ GOREON/
 
 <br/>
 
+## 배포
+
+- **Frontend** : Vercel  
+  https://goreon.vercel.app/
+
+- **Backend** : Render  
+  https://goreon-backend-bfs5.onrender.com
+
+- **Database** : MongoDB Atlas
+- **Storage** : Cloudflare R2
+
+<br/>
+
 ## 실행 방법
 ```bash
 # frontend
@@ -140,3 +153,44 @@ npm install
 npm run dev
 ```
 프론트엔드는 브라우저에서 `http://localhost:3000`으로 접속합니다.
+
+<br/>
+
+## 환경 변수
+
+배포 환경에서는 Vercel과 Render의 Environment Variables에 값을 등록합니다.  
+실제 키와 비밀값은 `.env`에만 보관하고 GitHub에는 업로드하지 않습니다.
+
+```env
+# frontend
+VITE_API_BASE_URL=
+
+# backend
+NODE_ENV=
+CLIENT_ORIGIN=
+MONGODB_URI=
+MONGODB_DB_NAME=
+JWT_SECRET=
+
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=
+
+KAKAO_CLIENT_ID=
+KAKAO_CLIENT_SECRET=
+KAKAO_REDIRECT_URI=
+
+NAVER_CLIENT_ID=
+NAVER_CLIENT_SECRET=
+NAVER_REDIRECT_URI=
+
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET_NAME=
+R2_PUBLIC_BASE_URL=
+R2_REVIEW_IMAGE_PREFIX=
+
+OPENAI_API_KEY=
+OPENAI_RECOMMENDATION_MODEL=
+```
