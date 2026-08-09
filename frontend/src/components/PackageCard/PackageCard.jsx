@@ -61,8 +61,11 @@ const normalizeImageSrc = (src) => {
 
 const ImageOrSkeleton = ({ src, alt, className = "" }) => {
   const imageSrc = normalizeImageSrc(src);
+  const [loadFailed, setLoadFailed] = useState(false);
 
-  if (!imageSrc) {
+  // 외부에서 스크랩해 온 상품 이미지(danuri.io)는 원본이 만료/삭제되면
+  // 깨진 이미지 아이콘으로 그대로 노출된다. 로드 실패 시 스켈레톤으로 대체한다.
+  if (!imageSrc || loadFailed) {
     return (
       <Skeleton
         className={`package-image-skeleton ${className}`.trim()}
@@ -71,7 +74,9 @@ const ImageOrSkeleton = ({ src, alt, className = "" }) => {
     );
   }
 
-  return <img src={imageSrc} alt={alt} className={className} />;
+  return (
+    <img src={imageSrc} alt={alt} className={className} onError={() => setLoadFailed(true)} />
+  );
 };
 
 function PackageCard({
