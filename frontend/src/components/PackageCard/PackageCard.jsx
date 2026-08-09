@@ -79,7 +79,14 @@ function PackageCard({
   return (
     <div className={`pakage_box ${isOpen ? "is-open" : ""}`}>
       <div className="pakage_big">
-        <img src={mainImage} alt="pakage_img" className="pakage_img" />
+        <img
+          src={mainImage}
+          alt={title || "추천 조합"}
+          className="pakage_img"
+          onError={(event) => {
+            event.currentTarget.style.display = "none";
+          }}
+        />
         <div className="pakage_texts">
           <p>{title}</p>
           <p className="gray_text">{description}</p>
@@ -109,7 +116,13 @@ function PackageCard({
                 onClick={() => handleDetailItemClick(item)}
                 aria-label={`${item.title} 상세페이지로 이동`}
               >
-                <img src={item.image} alt="" />
+                <img
+                  src={item.image}
+                  alt=""
+                  onError={(event) => {
+                    event.currentTarget.style.display = "none";
+                  }}
+                />
               </button>
               <button
                 type="button"

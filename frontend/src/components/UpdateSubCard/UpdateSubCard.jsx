@@ -39,7 +39,14 @@ function UpdateSubCard({
       >
         <div className="sub_title">
           <div className="pakage_img_box">
-            <img src={thumbnailImage} alt={title} className="pakage_img" />
+            <img
+              src={thumbnailImage}
+              alt={title}
+              className="pakage_img"
+              onError={(event) => {
+                event.currentTarget.style.display = "none";
+              }}
+            />
           </div>
           <div className="pakage_texts">
             <p className="title">{title}</p>
