@@ -8,7 +8,7 @@
 const MAX_IMAGE_RETRIES = 2;
 const RETRY_DELAY_MS = 700;
 
-export const handleProductImageError = (event) => {
+export const createImageErrorRetryHandler = (onFinalFailure) => (event) => {
   const img = event.currentTarget;
   const retryCount = Number(img.dataset.retryCount ?? "0");
 
@@ -27,5 +27,9 @@ export const handleProductImageError = (event) => {
     return;
   }
 
-  img.style.display = "none";
+  onFinalFailure(event);
 };
+
+export const handleProductImageError = createImageErrorRetryHandler((event) => {
+  event.currentTarget.style.display = "none";
+});
